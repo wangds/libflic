@@ -1,0 +1,6 @@
+[package]
+name = "flic"
+version = "0.1.0"
+authors = ["David Wang <millimillenary@gmail.com>"]
+
+[dependencies]
