@@ -8,3 +8,4 @@ name = "flic"
 crate-type = ["rlib", "dylib"]
 
 [dependencies]
+byteorder = "*"
