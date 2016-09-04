@@ -2,3 +2,4 @@
 //! Autodesk Animator FLI and Autodesk Animator Pro FLC files.
 
 extern crate byteorder;
+extern crate libc;
