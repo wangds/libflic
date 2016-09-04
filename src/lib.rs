@@ -3,3 +3,8 @@
 
 extern crate byteorder;
 extern crate libc;
+
+pub use errcode::FlicError;
+pub use errcode::FlicResult;
+
+pub mod errcode;
