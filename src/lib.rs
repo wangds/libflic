@@ -19,6 +19,7 @@ pub struct RasterMut<'a> {
     pal: &'a mut [u8],
 }
 
+pub mod codec;
 pub mod errcode;
 pub mod ffi;
 
