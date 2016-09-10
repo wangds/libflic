@@ -10,3 +10,4 @@ macro_rules! module {
 module!(codec011);
 module!(codec012);
 module!(codec013);
+module!(codec015);

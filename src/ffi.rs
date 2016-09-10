@@ -93,6 +93,25 @@ pub extern "C" fn flicrs_decode_fli_black(
     decode_fli_black(dst_raster);
 }
 
+/// Decode a FLI_BRUN chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_decode_fli_brun(
+        src: *const u8, src_len: usize, dst: *mut CRasterMut)
+        -> c_uint {
+    if src.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    match run_decoder![decode_fli_brun(src, src_len, dst)] {
+        Ok(_) => return 0,
+        Err(e) => {
+            printerrorln!(e);
+            return 1;
+        },
+    }
+}
+
 /*--------------------------------------------------------------*/
 /* Raster                                                       */
 /*--------------------------------------------------------------*/
