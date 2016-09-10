@@ -80,6 +80,19 @@ pub extern "C" fn flicrs_decode_fli_lc(
     }
 }
 
+/// Decode a FLI_BLACK chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_decode_fli_black(
+        dst: *mut CRasterMut) {
+    if dst.is_null() {
+        printerrorln!("bad input parameters");
+        return;
+    }
+
+    let dst_raster = unsafe{ transmute_raster_mut(dst) };
+    decode_fli_black(dst_raster);
+}
+
 /*--------------------------------------------------------------*/
 /* Raster                                                       */
 /*--------------------------------------------------------------*/
