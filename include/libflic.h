@@ -1,0 +1,17 @@
+#ifndef LIBFLIC_H
+#define LIBFLIC_H
+
+#include <stddef.h>
+
+struct CRasterMut;
+
+extern struct CRasterMut *
+flicrs_raster_mut_alloc(
+		size_t x, size_t y, size_t w, size_t h, size_t stride,
+		unsigned char *buf, size_t buf_len,
+		unsigned char *pal, size_t pal_len);
+
+extern void
+flicrs_raster_mut_free(struct CRasterMut *raster);
+
+#endif
