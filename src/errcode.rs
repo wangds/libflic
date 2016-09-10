@@ -11,6 +11,8 @@ pub enum FlicError {
     // Generic failure.  Please try to make something more meaningful.
     NoGood,
 
+    WrongResolution,
+
     // IO error.
     Io(io::Error),
 }
@@ -20,6 +22,7 @@ impl fmt::Display for FlicError {
         use self::FlicError::*;
         match *self {
             NoGood => write!(f, "No good"),
+            WrongResolution => write!(f, "Wrong resolution"),
             Io(ref err) => write!(f, "IO error: {}", err),
         }
     }
@@ -31,6 +34,7 @@ impl error::Error for FlicError {
         use self::FlicError::*;
         match *self {
             NoGood => "No good",
+            WrongResolution => "Wrong resolution",
             Io(ref err) => err.description(),
         }
     }

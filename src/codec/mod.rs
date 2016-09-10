@@ -11,3 +11,4 @@ module!(codec011);
 module!(codec012);
 module!(codec013);
 module!(codec015);
+module!(codec016);

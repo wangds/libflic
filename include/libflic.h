@@ -28,6 +28,11 @@ flicrs_decode_fli_brun(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
 
+extern unsigned int
+flicrs_decode_fli_copy(
+        const unsigned char *src, size_t src_len,
+        struct CRasterMut *dst);
+
 /*--------------------------------------------------------------*/
 /* Raster                                                       */
 /*--------------------------------------------------------------*/
