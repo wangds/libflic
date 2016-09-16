@@ -6,6 +6,7 @@ extern crate libc;
 
 pub use errcode::FlicError;
 pub use errcode::FlicResult;
+pub use flic::FlicFile;
 
 /// Raster structure.
 #[allow(dead_code)]
@@ -22,5 +23,6 @@ pub struct RasterMut<'a> {
 pub mod codec;
 pub mod errcode;
 pub mod ffi;
+pub mod flic;
 
 mod raster;
