@@ -327,9 +327,24 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
             return Err(FlicError::BadMagic);
         }
 
-        let chunks = try!(read_chunk_headers(file,
+        let chunks = try!(read_chunk_headers(file, hdr,
                 frame_num, offset, size, num_chunks));
         assert_eq!(chunks.len(), num_chunks);
+
+        // Note: Animator forces chunk sizes to be even.  However,
+        // Animator 1 did not update the frame header size
+        // accordingly.  This resulted in lost data.
+        if num_chunks > 0 {
+            let position = chunks[num_chunks - 1].offset + chunks[num_chunks - 1].size as u64;
+            let expected = offset + size as u64;
+            if position > expected {
+                println!("Warning: frame {} reads too much - current offset={}, expected offset={}",
+                         frame_num, position, expected);
+            } else if position < expected {
+                println!("Warning: frame {} reads too little - current offset={}, expected offset={}",
+                         frame_num, position, expected);
+            }
+        }
 
         frames.push(FlicFrame{
             chunks: chunks,
@@ -342,7 +357,7 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
 }
 
 /// Read all of the frame's chunk headers.
-fn read_chunk_headers(file: &mut File,
+fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
         frame_num: u16, frame_offset: u64, frame_size: u32, num_chunks: usize)
         -> FlicResult<Vec<ChunkId>> {
     let mut chunks = Vec::new();
@@ -362,8 +377,23 @@ fn read_chunk_headers(file: &mut File,
             return Err(FlicError::Corrupted);
         }
 
+        let mut size2 = size;
+
         match magic {
-            FLI_COLOR64 | FLI_LC | FLI_BLACK | FLI_BRUN | FLI_COPY => (),
+            // A bug in Animator and Animator Pro caused FLI_COPY
+            // chunks have size = size of data + 4 (size of pointer)
+            // instead of size of data + 6 (size of chunk header).
+            // The data was still written to disk; only the chunk's
+            // size is incorrect.
+            FLI_COPY => {
+                if size == hdr.w as u32 * hdr.h as u32 + 4 {
+                    size2 = hdr.w as u32 * hdr.h as u32 + 6;
+                    println!("Warning: frame {} - FLI_COPY has wrong size",
+                            frame_num);
+                }
+            },
+
+            FLI_COLOR64 | FLI_LC | FLI_BLACK | FLI_BRUN => (),
 
             _ => println!("Warning: frame {} - unrecognised chunk type {}",
                     frame_num, magic),
@@ -371,7 +401,7 @@ fn read_chunk_headers(file: &mut File,
 
         chunks.push(ChunkId {
             offset: offset + SIZE_OF_CHUNK as u64,
-            size: size - SIZE_OF_CHUNK as u32,
+            size: size2 - SIZE_OF_CHUNK as u32,
             magic: magic,
         });
 
