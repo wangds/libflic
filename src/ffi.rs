@@ -1,12 +1,15 @@
 //! Foreign function interface.
 
+use std::ffi::CStr;
+use std::path::Path;
 use std::mem;
 use std::ptr;
 use std::slice;
-use libc::{c_uint,size_t};
+use libc::{c_char,c_uint,size_t};
 
 use ::RasterMut;
 use codec::*;
+use flic::FlicFile;
 
 /// Dummy opaque structure, equivalent to RasterMut<'a>.
 pub struct CRasterMut;
@@ -124,6 +127,138 @@ pub extern "C" fn flicrs_decode_fli_copy(
 
     match run_decoder![decode_fli_copy(src, src_len, dst)] {
         Ok(_) => return 0,
+        Err(e) => {
+            printerrorln!(e);
+            return 1;
+        },
+    }
+}
+
+/*--------------------------------------------------------------*/
+/* FLIC                                                         */
+/*--------------------------------------------------------------*/
+
+/// Open a FLIC file.
+#[no_mangle]
+pub extern "C" fn flicrs_open(filename: *const c_char)
+        -> *mut FlicFile {
+    if filename.is_null() {
+        printerrorln!("bad input parameters");
+        return ptr::null_mut();
+    }
+
+    let cstr = unsafe{ CStr::from_ptr(filename) };
+    match cstr.to_str() {
+        Ok(s) => match FlicFile::open(Path::new(s)) {
+            Ok(f) => {
+                return Box::into_raw(Box::new(f));
+            },
+            Err(e) => {
+                printerrorln!(e);
+                return ptr::null_mut()
+            }
+        },
+        Err(e) => {
+            printerrorln!(e);
+            return ptr::null_mut();
+        }
+    }
+}
+
+/// Close a FLIC file.
+#[no_mangle]
+pub extern "C" fn flicrs_close(flic: *mut FlicFile) {
+    if flic.is_null() {
+        return;
+    }
+
+    let _flic = unsafe{ Box::from_raw(flic) };
+}
+
+/// Get the next frame number.
+#[no_mangle]
+pub extern "C" fn flicrs_frame(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.frame() as c_uint
+}
+
+/// Get the frame count, not including the ring frame.
+#[no_mangle]
+pub extern "C" fn flicrs_frame_count(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.frame_count() as c_uint
+}
+
+/// Get the FLIC width.
+#[no_mangle]
+pub extern "C" fn flicrs_width(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.width() as c_uint
+}
+
+/// Get the FLIC height.
+#[no_mangle]
+pub extern "C" fn flicrs_height(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.height() as c_uint
+}
+
+/// Number of jiffies to delay between each frame during playback.
+#[no_mangle]
+pub extern "C" fn flicrs_speed_jiffies(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.speed_jiffies() as c_uint
+}
+
+/// Decode the next frame in the FLIC.
+#[no_mangle]
+pub extern "C" fn flicrs_read_next_frame(
+        flic: *mut FlicFile, dst: *mut CRasterMut)
+        -> c_uint {
+    if flic.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let flic = unsafe{ &mut *flic };
+    let dst_raster = unsafe{ transmute_raster_mut(dst) };
+    match flic.read_next_frame(dst_raster) {
+        Ok(r) => {
+            return 0
+                + (if r.ended { 2 } else { 0 })
+                + (if r.looped { 4 } else { 0 })
+                + (if r.palette_updated { 8 } else { 0 });
+        },
         Err(e) => {
             printerrorln!(e);
             return 1;
