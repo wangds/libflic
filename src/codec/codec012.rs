@@ -1,5 +1,3 @@
-//! codec012.rs
-//!
 //! Codec for chunk type 12 = FLI_LC.
 
 use std::io::{Cursor,Read};
@@ -23,11 +21,10 @@ use ::{FlicResult,RasterMut};
 /// prior frame.  The second 16-bit word contains the number of lines
 /// in the chunk.  The data for the lines follows these two words.
 ///
-/// Each line begins with two bytes.  The first byte contains the
-/// starting x position of the data on the line, and the second byte
-/// the number of packets for the line.  Unlike BRUN compression, the
-/// packet count is significant (because this compression method is
-/// only used on 320x200 FLICs).
+/// Each line begins with a single byte that contains the number of
+/// packets for the line.  Unlike BRUN compression, the packet count
+/// is significant (because this compression method is only used on
+/// 320x200 FLICs).
 ///
 /// Each packet consists of a single byte column skip, followed by a
 /// packet type/size byte.  If the packet type is positive it is a

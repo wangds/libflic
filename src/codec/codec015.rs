@@ -1,5 +1,3 @@
-//! codec015.rs
-//!
 //! Codec for chunk type 15 = FLI_BRUN.
 
 use std::io::{Cursor,Read};

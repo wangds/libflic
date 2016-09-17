@@ -18,6 +18,9 @@ use codec::*;
 /// does not contain a prefix chunk, and does not use FLI_PSTAMP or
 /// FLI_SS2 data encoding in the frame chunks.
 ///
+/// The file header for a FLI file is a subset of the FLC file header.
+/// It is defined as follows:
+///
 ///   Offset | Length |   Name   | Description
 ///   ------:| ------:|:--------:| -----------------------------------
 ///        0 |      4 |   size   | The size of the entire animation file, including this file header.
@@ -29,7 +32,7 @@ use codec::*;
 ///       14 |      2 |   flags  | Always zero in a FLI file.
 ///       16 |      2 |   speed  | Number of jiffies to delay between each frame during playback.  A jiffy is 1/70 of a second.
 ///       18 |    110 | reserved | Unused space, set to zeroes.
-const FLIH_MAGIC: u16 = 0xAF11;
+pub const FLIH_MAGIC: u16 = 0xAF11;
 
 
 /// FLIC animation, with a File handle.
@@ -51,7 +54,7 @@ pub struct FlicFile {
 /// A FLIC file begins with a 128-byte header, described below.  All
 /// lengths and offsets are in bytes.  All values stored in the header
 /// fields are unsigned.
-const SIZE_OF_FLIC_HEADER: usize = 128;
+pub const SIZE_OF_FLIC_HEADER: usize = 128;
 
 /// FLIC header.
 #[allow(dead_code)]
@@ -78,10 +81,10 @@ struct FlicHeader {
 ///        4 |      2 |   type   | Frame chunk identifier.
 ///        6 |      2 |  chunks  | Number of subordinate chunks in the frame chunk.
 ///        8 |      8 | reserved | Unused space, set to zeroes.
-const FCID_FRAME: u16 = 0xF1FA; // also: FLIF_MAGIC.
+pub const FCID_FRAME: u16 = 0xF1FA; // also: FLIF_MAGIC.
 
 /// Size of a FLIC frame header on disk.
-const SIZE_OF_FLIC_FRAME: usize = 16;
+pub const SIZE_OF_FLIC_FRAME: usize = 16;
 
 /// FLIC frame header.
 #[allow(dead_code)]
@@ -109,7 +112,7 @@ struct FlicFrame {
 /// The type values in the chunk headers indicate what type of
 /// graphics data the chunk contains and which compression method was
 /// used to encode the data.
-const SIZE_OF_CHUNK: usize = 6;
+pub const SIZE_OF_CHUNK: usize = 6;
 
 /// Chunk header.
 #[allow(dead_code)]

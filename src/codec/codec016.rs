@@ -1,5 +1,3 @@
-//! codec016.rs
-//!
 //! Codec for chunk type 16 = FLI_COPY.
 
 use ::{FlicError,FlicResult,RasterMut};

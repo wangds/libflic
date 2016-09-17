@@ -1,5 +1,3 @@
-//! codec011.rs
-//!
 //! Codec for chunk type 11 = FLI_COLOR64.
 
 use std::io::{Cursor,Read};

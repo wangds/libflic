@@ -1,5 +1,3 @@
-//! codec013.rs
-//!
 //! Codec for chunk type 13 = FLI_BLACK.
 
 use ::RasterMut;
