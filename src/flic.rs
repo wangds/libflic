@@ -383,6 +383,11 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
         let mut size2 = size;
 
         match magic {
+            // Warn about legacy chunk types.
+            FLI_WRUN =>
+                println!("Warning: frame {} - FLI_WRUN chunk type detected",
+                        frame_num),
+
             // A bug in Animator and Animator Pro caused FLI_COPY
             // chunks have size = size of data + 4 (size of pointer)
             // instead of size of data + 6 (size of chunk header).

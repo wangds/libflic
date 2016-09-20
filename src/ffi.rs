@@ -45,6 +45,21 @@ unsafe fn transmute_raster_mut<'a>(dst: *mut CRasterMut)
 /* Codecs                                                       */
 /*--------------------------------------------------------------*/
 
+/// Decode a FLI_WRUN chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_decode_fli_wrun(
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut) {
+    if src.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return;
+    }
+
+    match run_decoder!(decode_fli_wrun(src, src_len, dst)) {
+        Ok(_) => return,
+        Err(e) => printerrorln!(e),
+    }
+}
+
 /// Decode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_color64(
