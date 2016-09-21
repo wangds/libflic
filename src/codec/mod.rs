@@ -10,6 +10,7 @@ macro_rules! module {
 use ::{FlicError,FlicResult,RasterMut};
 
 module!(codec001);
+module!(codec010);
 module!(codec011);
 module!(codec012);
 module!(codec013);
@@ -27,6 +28,7 @@ pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
         -> FlicResult<()> {
     match magic {
         FLI_WRUN => try!(decode_fli_wrun(&buf, dst)),
+        FLI_SBSRSC => try!(decode_fli_sbsrsc(&buf, dst)),
         FLI_COLOR64 => try!(decode_fli_color64(&buf, dst)),
         FLI_LC => try!(decode_fli_lc(&buf, dst)),
         FLI_BLACK => decode_fli_black(dst),

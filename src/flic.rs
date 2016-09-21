@@ -387,6 +387,9 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
             FLI_WRUN =>
                 println!("Warning: frame {} - FLI_WRUN chunk type detected",
                         frame_num),
+            FLI_SBSRSC =>
+                println!("Warning: frame {} - FLI_SBSRSC chunk type detected",
+                        frame_num),
 
             // A bug in Animator and Animator Pro caused FLI_COPY
             // chunks have size = size of data + 4 (size of pointer)
