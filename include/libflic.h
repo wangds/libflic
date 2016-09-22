@@ -44,6 +44,10 @@ extern void
 flicrs_decode_fli_black(
         struct CRasterMut *dst);
 
+extern void
+flicrs_decode_fli_icolors(
+        struct CRasterMut *dst);
+
 extern unsigned int
 flicrs_decode_fli_brun(
         const unsigned char *src, size_t src_len,
