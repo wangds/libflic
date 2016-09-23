@@ -1,6 +1,61 @@
 //! Raster implementation.
 
-use ::RasterMut;
+use ::{Raster,RasterMut};
+
+impl<'a> Raster<'a> {
+    /// Allocate a new raster for the given screen buffer and palette
+    /// memory slices.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// const SCREEN_W: usize = 320;
+    /// const SCREEN_H: usize = 200;
+    /// const NUM_COLS: usize = 256;
+    /// let buf = [0; SCREEN_W * SCREEN_H];
+    /// let pal = [0; 3 * NUM_COLS];
+    ///
+    /// flic::Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
+    /// ```
+    pub fn new(w: usize, h: usize, buf: &'a [u8], pal: &'a [u8])
+            -> Self {
+        Self::with_offset(0, 0, w, h, w, buf, pal)
+    }
+
+    /// Allocate a new raster for the given screen buffer and palette
+    /// memory slices, with an offset and stride.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// const SCREEN_W: usize = 320;
+    /// const SCREEN_H: usize = 200;
+    /// const NUM_COLS: usize = 256;
+    /// let buf = [0; SCREEN_W * SCREEN_H];
+    /// let pal = [0; 3 * NUM_COLS];
+    ///
+    /// flic::Raster::with_offset(0, 0, SCREEN_W, SCREEN_H, SCREEN_W, &buf, &pal);
+    /// ```
+    pub fn with_offset(
+            x: usize, y: usize, w: usize, h: usize, stride: usize,
+            buf: &'a [u8], pal: &'a [u8])
+            -> Self {
+        assert!(x < stride);
+        assert!(x + w <= stride);
+        assert!(stride * (y + h) <= buf.len());
+        assert!(pal.len() == 3 * 256);
+
+        Raster {
+            x: x,
+            y: y,
+            w: w,
+            h: h,
+            stride: stride,
+            buf: buf,
+            pal: pal,
+        }
+    }
+}
 
 impl<'a> RasterMut<'a> {
     /// Allocate a new raster for the given screen buffer and palette

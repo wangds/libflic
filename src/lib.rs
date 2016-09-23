@@ -10,6 +10,18 @@ pub use flic::FlicFile;
 
 /// Raster structure.
 #[allow(dead_code)]
+pub struct Raster<'a> {
+    x: usize,
+    y: usize,
+    w: usize,
+    h: usize,
+    stride: usize,
+    buf: &'a [u8],
+    pal: &'a [u8],
+}
+
+/// Mutable raster structure.
+#[allow(dead_code)]
 pub struct RasterMut<'a> {
     x: usize,
     y: usize,
