@@ -7,9 +7,12 @@ use std::ptr;
 use std::slice;
 use libc::{c_char,c_uint,size_t};
 
-use ::RasterMut;
+use ::{Raster,RasterMut};
 use codec::*;
 use flic::FlicFile;
+
+/// Dummy opaque structure, equivalent to Raster<'a>.
+pub struct CRaster;
 
 /// Dummy opaque structure, equivalent to RasterMut<'a>.
 pub struct CRasterMut;
@@ -315,6 +318,26 @@ pub extern "C" fn flicrs_read_next_frame(
 
 /// Allocate a new raster.
 #[no_mangle]
+pub extern "C" fn flicrs_raster_alloc(
+        x: size_t, y: size_t, w: size_t, h: size_t, stride: size_t,
+        buf: *const u8, buf_len: size_t,
+        pal: *const u8, pal_len: size_t)
+        -> *mut CRaster {
+    if buf.is_null() || pal.is_null() {
+        printerrorln!("bad input parameters");
+        return ptr::null_mut();
+    }
+
+    let buf_slice = unsafe{ slice::from_raw_parts(buf, buf_len) };
+    let pal_slice = unsafe{ slice::from_raw_parts(pal, pal_len) };
+    let raster = Raster::with_offset(x, y, w, h, stride, buf_slice, pal_slice);
+    let rptr = Box::into_raw(Box::new(raster));
+    let cptr: *mut CRaster = unsafe{ mem::transmute(rptr) };
+    cptr
+}
+
+/// Allocate a new raster.
+#[no_mangle]
 pub extern "C" fn flicrs_raster_mut_alloc(
         x: size_t, y: size_t, w: size_t, h: size_t, stride: size_t,
         buf: *mut u8, buf_len: size_t,
@@ -331,6 +354,17 @@ pub extern "C" fn flicrs_raster_mut_alloc(
     let rptr = Box::into_raw(Box::new(raster));
     let cptr: *mut CRasterMut = unsafe{ mem::transmute(rptr) };
     cptr
+}
+
+/// Free a previously allocated raster.
+#[no_mangle]
+pub extern "C" fn flicrs_raster_free(raster: *mut CRaster) {
+    if raster.is_null() {
+        return;
+    }
+
+    let rptr: *mut Raster = unsafe{ mem::transmute(raster) };
+    let _raster = unsafe{ Box::from_raw(rptr) };
 }
 
 /// Free a previously allocated raster.
