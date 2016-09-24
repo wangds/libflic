@@ -61,6 +61,16 @@ struct GroupByRuns<'a> {
     ignore_final_same_run: bool,
 }
 
+/// An iterator that groups the buffer into packets of the same value.
+///
+/// This is suitable for compressing memset/memcpy type codecs,
+/// e.g. FLI_BRUN.
+#[allow(dead_code)]
+struct GroupByValue<'a> {
+    buf: &'a [u8],
+    idx: usize,
+}
+
 /*--------------------------------------------------------------*/
 
 /// Returns true if the chunk type modifies the palette.
@@ -232,6 +242,41 @@ impl<'a> Iterator for GroupByRuns<'a> {
     }
 }
 
+#[allow(dead_code)]
+impl<'a> GroupByValue<'a> {
+    /// Create a new GroupByValue iterator.
+    fn new(buf: &'a [u8]) -> Self {
+        GroupByValue {
+            buf: buf,
+            idx: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for GroupByValue<'a> {
+    type Item = Group;
+
+    /// Advances the iterator and returns the next value.
+    fn next(&mut self) -> Option<Group> {
+        let len = self.buf.len();
+        let start = self.idx;
+        let mut i = self.idx;
+
+        if i >= len {
+            return None;
+        } else {
+            let c = self.buf[self.idx];
+            while (i < len) && (self.buf[i] == c) {
+                i = i + 1;
+            }
+
+            let n = i - self.idx;
+            self.idx = i;
+            return Some(Group::Same(start, n));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Group,GroupByEq,GroupByRuns};
@@ -266,6 +311,20 @@ mod tests {
             .set_prepend_same_run()
             .set_ignore_final_same_run()
             .collect();
+
+        assert_eq!(&gs[..], expected);
+    }
+
+    #[test]
+    fn test_group_by_value() {
+        use super::{Group,GroupByValue};
+
+        let xs = [ 1, 1, 3, 4, 4, 4, 4, 7, 7 ];
+        let expected = [
+            Group::Same(0, 2), Group::Same(2, 1), Group::Same(3, 4), Group::Same(7, 2) ];
+
+        let gs: Vec<Group>
+            = GroupByValue::new(&xs).collect();
 
         assert_eq!(&gs[..], expected);
     }
