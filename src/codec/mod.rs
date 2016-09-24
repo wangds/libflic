@@ -45,6 +45,22 @@ struct GroupByEq<I: Iterator> where I::Item: PartialEq {
     ignore_final_same_run: bool,
 }
 
+/// An iterator that groups the two buffers into packets by "runs".
+/// A run is a length of the buffer where the corresponding elements
+/// of the "old" and "new" buffers are the same, or a stretch of the
+/// "new" buffer where all of the elements have the same value.
+///
+/// This is suitable for compressing skip/memset/memcpy type codes,
+/// e.g. FLI_LC, FLI_SS2.
+#[allow(dead_code)]
+struct GroupByRuns<'a> {
+    old: &'a [u8],
+    new: &'a [u8],
+    idx: usize,
+    prepend_same_run: bool,
+    ignore_final_same_run: bool,
+}
+
 /*--------------------------------------------------------------*/
 
 /// Returns true if the chunk type modifies the palette.
@@ -148,9 +164,77 @@ impl<I: Iterator> Iterator for GroupByEq<I>
     }
 }
 
+#[allow(dead_code)]
+impl<'a> GroupByRuns<'a> {
+    /// Create a new GroupByRuns iterator.
+    pub fn new(old: &'a [u8], new: &'a [u8]) -> Self {
+        assert_eq!(old.len(), new.len());
+        GroupByRuns {
+            old: old,
+            new: new,
+            idx: 0,
+            prepend_same_run: false,
+            ignore_final_same_run: false,
+        }
+    }
+
+    /// If set, and if the two buffers start on a "Diff" sequence,
+    /// then a "Same" group of length 0 will be added at the start.
+    fn set_prepend_same_run(mut self) -> Self {
+        self.prepend_same_run = true;
+        self
+    }
+
+    /// If set, and if the two buffers end on a "Same" sequence,
+    /// then this final "same" type group will be ignored.
+    fn set_ignore_final_same_run(mut self) -> Self {
+        self.ignore_final_same_run = true;
+        self
+    }
+}
+
+impl<'a> Iterator for GroupByRuns<'a> {
+    type Item = Group;
+
+    /// Advances the iterator and returns the next value.
+    fn next(&mut self) -> Option<Group> {
+        let len = self.new.len();
+        let start = self.idx;
+        let mut i = self.idx;
+
+        if i >= len {
+            return None;
+        } else if self.old[i] == self.new[i]
+                || self.prepend_same_run {
+            while (i < len) && (self.old[i] == self.new[i]) {
+                i = i + 1;
+            }
+
+            let n = i - self.idx;
+            self.idx = i;
+            self.prepend_same_run = false;
+
+            if i >= len && self.ignore_final_same_run {
+                return None;
+            } else {
+                return Some(Group::Same(start, n));
+            }
+        } else {
+            let c = self.new[self.idx];
+            while (i < len) && (self.old[i] != self.new[i]) && (self.new[i] == c) {
+                i = i + 1;
+            }
+
+            let n = i - self.idx;
+            self.idx = i;
+            return Some(Group::Diff(start, n));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Group,GroupByEq};
+    use super::{Group,GroupByEq,GroupByRuns};
 
     #[test]
     fn test_group_by_eq() {
@@ -162,6 +246,23 @@ mod tests {
 
         let gs: Vec<Group>
             = GroupByEq::new(xs.iter(), ys.iter())
+            .set_prepend_same_run()
+            .set_ignore_final_same_run()
+            .collect();
+
+        assert_eq!(&gs[..], expected);
+    }
+
+    #[test]
+    fn test_group_by_runs() {
+        let xs = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
+        let ys = [ 2, 1, 3, 4, 5, 0, 0, 0, 9 ];
+        let expected = [
+            Group::Same(0, 0), // prepend
+            Group::Diff(0, 1), Group::Diff(1, 1), Group::Same(2, 3), Group::Diff(5, 3) ];
+
+        let gs: Vec<Group>
+            = GroupByRuns::new(&xs, &ys)
             .set_prepend_same_run()
             .set_ignore_final_same_run()
             .collect();
