@@ -36,7 +36,6 @@ enum Group {
 ///
 /// This is suitable for compressing skip/memcpy type codecs,
 /// e.g. FLI_COLOR64, FLI_COLOR256.
-#[allow(dead_code)]
 struct GroupByEq<I: Iterator> where I::Item: PartialEq {
     iter: Zip<I, I>,
     peek: Option<bool>,
@@ -99,7 +98,6 @@ pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
 
 /*--------------------------------------------------------------*/
 
-#[allow(dead_code)]
 impl<I: Iterator> GroupByEq<I>
         where I::Item: PartialEq {
     /// Create a new GroupByEq iterator.

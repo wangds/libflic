@@ -4,11 +4,15 @@
 #include <stddef.h>
 
 struct FlicFile;
+struct CRaster;
 struct CRasterMut;
 
 enum {
     FLICRS_SUCCESS = 0,
     FLICRS_ERROR = 1,
+
+    // flicrs_encode
+    FLICRS_BUFFER_TOO_SMALL = 2,
 
     // flicrs_read_next_frame
     FLICRS_ENDED = 2,
@@ -57,6 +61,11 @@ extern unsigned int
 flicrs_decode_fli_copy(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
+
+extern unsigned int
+flicrs_encode_fli_color64(
+        struct CRaster *opt_prev, struct CRaster *next,
+        unsigned char *out_buf, size_t max_len, size_t *out_len);
 
 /*--------------------------------------------------------------*/
 /* FLIC                                                         */
