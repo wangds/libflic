@@ -51,7 +51,6 @@ struct GroupByEq<I: Iterator> where I::Item: PartialEq {
 ///
 /// This is suitable for compressing skip/memset/memcpy type codes,
 /// e.g. FLI_LC, FLI_SS2.
-#[allow(dead_code)]
 struct GroupByRuns<'a> {
     old: &'a [u8],
     new: &'a [u8],
@@ -172,7 +171,6 @@ impl<I: Iterator> Iterator for GroupByEq<I>
     }
 }
 
-#[allow(dead_code)]
 impl<'a> GroupByRuns<'a> {
     /// Create a new GroupByRuns iterator.
     pub fn new(old: &'a [u8], new: &'a [u8]) -> Self {

@@ -17,6 +17,7 @@ pub enum FlicError {
     BadMagic,
     Corrupted,
     WrongResolution,
+    ExceededLimit,
 
     // IO error.
     Io(io::Error),
@@ -33,6 +34,7 @@ impl fmt::Display for FlicError {
             BadMagic => write!(f, "Bad magic"),
             Corrupted => write!(f, "Corrupted"),
             WrongResolution => write!(f, "Wrong resolution"),
+            ExceededLimit => write!(f, "Exceeded limit"),
             Io(ref err) => write!(f, "IO error: {}", err),
         }
     }
@@ -50,6 +52,7 @@ impl error::Error for FlicError {
             BadMagic => "Bad magic",
             Corrupted => "Corrupted",
             WrongResolution => "Wrong resolution",
+            ExceededLimit => "Exceeded limit",
             Io(ref err) => err.description(),
         }
     }

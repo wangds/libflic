@@ -1,10 +1,11 @@
 //! Codec for chunk type 12 = FLI_LC.
 
-use std::io::{Cursor,Read};
+use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use byteorder::LittleEndian as LE;
-use byteorder::ReadBytesExt;
+use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicResult,RasterMut};
+use ::{FlicError,FlicResult,Raster,RasterMut};
+use super::{Group,GroupByRuns};
 
 /// Magic for a FLI_LC chunk - Byte Aligned Delta Compression.
 ///
@@ -39,6 +40,13 @@ use ::{FlicResult,RasterMut};
 /// compression is reversed from that used in BRUN compression.  This
 /// gives better performance during playback.
 pub const FLI_LC: u16 = 12;
+
+#[derive(Clone,Copy,Debug)]
+enum LcOp {
+    Skip(usize),
+    Memset(usize, usize),
+    Memcpy(usize, usize),
+}
 
 /// Decode a FLI_LC chunk.
 pub fn decode_fli_lc(src: &[u8], dst: &mut RasterMut)
@@ -79,10 +87,244 @@ pub fn decode_fli_lc(src: &[u8], dst: &mut RasterMut)
     Ok(())
 }
 
+/// Encode a FLI_LC chunk.
+pub fn encode_fli_lc<W: Write + Seek>(
+        prev: &Raster, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    if (prev.w != next.w) || (prev.h != next.h) {
+        return Err(FlicError::WrongResolution);
+    }
+
+    let prev_start = prev.stride * prev.y;
+    let prev_end = prev.stride * (prev.y + prev.h);
+    let next_start = next.stride * next.y;
+    let next_end = next.stride * (next.y + next.h);
+
+    let y0 = prev.buf[prev_start..prev_end].chunks(prev.stride)
+            .zip(next.buf[next_start..next_end].chunks(next.stride))
+            .take_while(|&(p, n)| &p[prev.x..(prev.x + prev.w)] == &n[next.x..(next.x + next.w)])
+            .count();
+
+    if y0 >= next.h {
+        return Ok(0);
+    }
+
+    let y1 = next.h - prev.buf[prev_start..prev_end].chunks(prev.stride)
+            .zip(next.buf[next_start..next_end].chunks(next.stride))
+            .rev()
+            .take_while(|&(p, n)| &p[prev.x..(prev.x + prev.w)] == &n[next.x..(next.x + next.w)])
+            .count();
+
+    if y1 <= y0 {
+        return Ok(0);
+    }
+
+    let hh = y1 - y0;
+    if (y0 > ::std::u16::MAX as usize) || (hh > ::std::u16::MAX as usize) {
+        return Err(FlicError::ExceededLimit);
+    }
+
+    // Reserve space for y0, hh.
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    try!(w.write_u16::<LE>(y0 as u16));
+    try!(w.write_u16::<LE>(hh as u16));
+
+    let prev_start = prev.stride * y0;
+    let prev_end = prev.stride * y1;
+    let next_start = next.stride * y0;
+    let next_end = next.stride * y1;
+
+    for (p, n) in prev.buf[prev_start..prev_end].chunks(prev.stride)
+            .zip(next.buf[next_start..next_end].chunks(next.stride)) {
+        let p = &p[prev.x..(prev.x + prev.w)];
+        let n = &n[next.x..(next.x + next.w)];
+
+        // Reserve space for count.
+        let pos1 = try!(w.seek(SeekFrom::Current(0)));
+        try!(w.write_u8(0));
+
+        let mut state = LcOp::Skip(0);
+        let mut count = 0;
+
+        for g in GroupByRuns::new(p, n)
+                .set_prepend_same_run()
+                .set_ignore_final_same_run() {
+            if let Some(new_state) = combine_packets(state, g) {
+                state = new_state;
+            } else {
+                let new_state = convert_packet(g);
+
+                count = try!(write_packet(state, count, n, w));
+
+                // Insert Skip(0) between Memcpy and Memset operations.
+                match (state, new_state) {
+                    (LcOp::Skip(_), _) => {},
+                    (_, LcOp::Skip(_)) => {},
+                    _ => count = try!(write_packet(LcOp::Skip(0), count, n, w)),
+                }
+
+                if count > 2 * ::std::u8::MAX as usize {
+                    return Err(FlicError::ExceededLimit);
+                }
+
+                state = new_state;
+            }
+        }
+
+        if let LcOp::Skip(_) = state {
+        } else {
+            count = try!(write_packet(state, count, n, w));
+        }
+
+        assert!(count % 2 == 0);
+        if count > 2 * ::std::u8::MAX as usize {
+            return Err(FlicError::ExceededLimit);
+        }
+
+        let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        try!(w.seek(SeekFrom::Start(pos1)));
+        try!(w.write_u8((count / 2) as u8));
+        try!(w.seek(SeekFrom::Start(pos2)));
+    }
+
+    // If odd number, pad it to be even.
+    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    if (pos1 - pos0) % 2 == 1 {
+        try!(w.write_u8(0));
+        pos1 = pos1 + 1;
+    }
+
+    Ok((pos1 - pos0) as usize)
+}
+
+fn combine_packets(s0: LcOp, s1: Group)
+        -> Option<LcOp> {
+    match (s0, s1) {
+        (LcOp::Skip(a), Group::Same(_, b)) => return Some(LcOp::Skip(a + b)),
+        (LcOp::Skip(_), Group::Diff(..)) => return None,
+
+        // 1. Memset: length + data (1)
+        //    Skip:   length (1)
+        //    Memcpy: length (1) + data
+        //
+        // 2. Memcpy: length + data (a)
+        //    Memcpy: data (b)
+        //    Memcpy: data
+        (LcOp::Memset(idx, a), Group::Same(_, b)) =>
+            if a + b < 3 {
+                return Some(LcOp::Memcpy(idx, a + b));
+            },
+
+        // 1. Memset: length + data (1)
+        //    Skip:   length (1)
+        //    Memset: length (1) + data (1)
+        //
+        // 2. Memcpy: length + data (a)
+        //    Memcpy: data (b)
+        (LcOp::Memset(idx, a), Group::Diff(_, b)) =>
+            if a + b <= 4 {
+                return Some(LcOp::Memcpy(idx, a + b));
+            },
+
+        // 1. Memcpy: length + data (a)
+        //    Skip:   length (1)
+        //    Memcpy: length (1) + data
+        //
+        // 2. Memcpy: length + data (a)
+        //    Memcpy: data (b)
+        //    Memcpy: data
+        (LcOp::Memcpy(idx, a), Group::Same(_, b)) =>
+            if b < 2 {
+                return Some(LcOp::Memcpy(idx, a + b));
+            },
+
+        // 1. Memcpy: length + data (a)
+        //    Skip:   length (1)
+        //    Memset: length (1) + data (1)
+        //    Skip:   length (1)
+        //    Memcpy: length (1) + data
+        //
+        // 2. Memcpy: length + data (a)
+        //    Memcpy: data (b)
+        //    Memcpy: data
+        //
+        (LcOp::Memcpy(idx, a), Group::Diff(_, b)) =>
+            if b < 5 {
+                return Some(LcOp::Memcpy(idx, a + b));
+            },
+    }
+
+    // Don't combine s0 and s1 into a single operation.
+    None
+}
+
+fn convert_packet(g: Group)
+        -> LcOp {
+    match g {
+        Group::Same(_, len) => LcOp::Skip(len),
+        Group::Diff(start, len) => LcOp::Memset(start, len),
+    }
+}
+
+fn write_packet<W: Write>(
+        op: LcOp, count: usize, buf: &[u8], w: &mut W)
+        -> FlicResult<usize> {
+    let mut count = count;
+    match op {
+        LcOp::Skip(mut len) => {
+            let max = ::std::u8::MAX as usize;
+            while len > max {
+                try!(w.write_u8(max as u8));
+                try!(w.write_i8(0)); // copy 0
+
+                len = len - max;
+                count = count + 2;
+            }
+
+            try!(w.write_u8(len as u8));
+            count = count + 1;
+        },
+        LcOp::Memset(idx, mut len) => {
+            let max = (-(::std::i8::MIN as i32)) as usize;
+            while len > max {
+                try!(w.write_i8(max as i8));
+                try!(w.write_u8(buf[idx]));
+                try!(w.write_u8(0)); // skip 0
+
+                len = len - max;
+                count = count + 2;
+            }
+
+            try!(w.write_i8(-(len as i32) as i8));
+            try!(w.write_u8(buf[idx]));
+            count = count + 1;
+        },
+        LcOp::Memcpy(mut idx, mut len) => {
+            let max = ::std::i8::MAX as usize;
+            while len > max {
+                try!(w.write_i8(max as i8));
+                try!(w.write_all(&buf[idx..(idx + max)]));
+                try!(w.write_u8(0)); // skip 0
+
+                idx = idx + max;
+                len = len - max;
+                count = count + 2;
+            }
+
+            try!(w.write_u8(len as u8));
+            try!(w.write_all(&buf[idx..(idx + len)]));
+            count = count + 1;
+        },
+    }
+
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
-    use ::RasterMut;
-    use super::decode_fli_lc;
+    use std::io::Cursor;
+    use ::{Raster,RasterMut};
+    use super::*;
 
     #[test]
     fn test_decode_fli_lc() {
@@ -113,5 +355,41 @@ mod tests {
         }
 
         assert_eq!(&buf[(SCREEN_W * 2)..(SCREEN_W * 2 + 16)], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_lc() {
+        let src = [
+            0x00, 0x00,
+            0x01, 0x23, 0x45, 0x67, 0x89,
+            0x00, 0x00, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x00, 0x00 ];
+
+        let expected = [
+            0x02, 0x00, // y0 2
+            0x01, 0x00, // hh 1
+            2,          // count 2
+            2, 5,       // skip 2, length 5
+            0x01, 0x23, 0x45, 0x67, 0x89,
+            2, (-4i8) as u8,    // skip 2, length -4
+            0xAB,
+            0x00];      // even
+
+        const SCREEN_W: usize = 32;
+        const SCREEN_H: usize = 4;
+        const NUM_COLS: usize = 256;
+        let buf1: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
+        let mut buf2: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
+        let pal: Vec<u8> = vec![0; 3 * NUM_COLS];
+        buf2[(SCREEN_W * 2)..(SCREEN_W * 2 + 15)].copy_from_slice(&src[..]);
+
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let prev = Raster::new(SCREEN_W, SCREEN_H, &buf1, &pal);
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf2, &pal);
+        let res = encode_fli_lc(&prev, &next, &mut enc);
+        assert!(res.is_ok());
+
+        assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }
