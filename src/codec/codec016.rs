@@ -1,6 +1,7 @@
 //! Codec for chunk type 16 = FLI_COPY.
 
-use ::{FlicError,FlicResult,RasterMut};
+use std::io::Write;
+use ::{FlicError,FlicResult,Raster,RasterMut};
 
 /// Magic for a FLI_COPY chunk - No Compression.
 ///
@@ -31,4 +32,19 @@ pub fn decode_fli_copy(src: &[u8], dst: &mut RasterMut)
     }
 
     Ok(())
+}
+
+/// Encode a FLI_COPY chunk.
+pub fn encode_fli_copy<W: Write>(
+        next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    let start = next.stride * next.y;
+    let end = next.stride * (next.y + next.h);
+    for row in next.buf[start..end].chunks(next.stride) {
+        let start = next.x;
+        let end = start + next.w;
+        try!(w.write_all(&row[start..end]));
+    }
+
+    Ok(next.w * next.h)
 }

@@ -293,6 +293,39 @@ pub extern "C" fn flicrs_encode_fli_brun(
     }
 }
 
+/// Encode a FLI_COPY chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_encode_fli_copy(
+        next: *const CRaster,
+        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        -> c_uint {
+    if next.is_null() || out_buf.is_null() || out_len.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let next_raster = unsafe{ transmute_raster(next) };
+
+    let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+    match encode_fli_copy(next_raster, &mut enc) {
+        Ok(len) => {
+            unsafe{ ptr::write(out_len, len) };
+            if len <= max_len {
+                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
+                dst_slice[0..len].copy_from_slice(&enc.get_ref()[..]);
+                return 0;
+            } else {
+                printerrorln!("output buffer too small");
+                return 2;
+            }
+        },
+        Err(e) => {
+            printerrorln!(e);
+            return 1;
+        },
+    }
+}
+
 /*--------------------------------------------------------------*/
 /* FLIC                                                         */
 /*--------------------------------------------------------------*/

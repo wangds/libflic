@@ -77,6 +77,11 @@ flicrs_encode_fli_brun(
         struct CRaster *next,
         unsigned char *out_buf, size_t max_len, size_t *out_len);
 
+extern unsigned int
+flicrs_encode_fli_copy(
+        struct CRaster *next,
+        unsigned char *out_buf, size_t max_len, size_t *out_len);
+
 /*--------------------------------------------------------------*/
 /* FLIC                                                         */
 /*--------------------------------------------------------------*/
