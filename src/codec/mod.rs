@@ -63,7 +63,6 @@ struct GroupByRuns<'a> {
 ///
 /// This is suitable for compressing memset/memcpy type codecs,
 /// e.g. FLI_BRUN.
-#[allow(dead_code)]
 struct GroupByValue<'a> {
     buf: &'a [u8],
     idx: usize,
@@ -238,7 +237,6 @@ impl<'a> Iterator for GroupByRuns<'a> {
     }
 }
 
-#[allow(dead_code)]
 impl<'a> GroupByValue<'a> {
     /// Create a new GroupByValue iterator.
     fn new(buf: &'a [u8]) -> Self {

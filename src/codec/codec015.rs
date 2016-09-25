@@ -1,9 +1,11 @@
 //! Codec for chunk type 15 = FLI_BRUN.
 
-use std::io::{Cursor,Read};
-use byteorder::ReadBytesExt;
+use std::cmp::min;
+use std::io::{Cursor,Read,Seek,SeekFrom,Write};
+use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicResult,RasterMut};
+use ::{FlicResult,Raster,RasterMut};
+use super::{Group,GroupByValue};
 
 /// Magic for a FLI_BRUN chunk - Byte Run Length Compression.
 ///
@@ -69,10 +71,130 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
     Ok(())
 }
 
+/// Encode a FLI_BRUN chunk.
+pub fn encode_fli_brun<W: Write + Seek>(
+        next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+
+    let start = next.stride * next.y;
+    let end = next.stride * (next.y + next.h);
+    for n in next.buf[start..end].chunks(next.stride) {
+        let n = &n[next.x..(next.x + next.w)];
+        let pos1 = try!(w.seek(SeekFrom::Current(0)));
+
+        // Dummy initial state.
+        let mut state = Group::Same(0, 0);
+        let mut count = 0;
+
+        // Reserve space for count.
+        try!(w.write_u8(0));
+
+        for g in GroupByValue::new(n) {
+            if let Some(new_state) = combine_packets(state, g) {
+                state = new_state;
+            } else {
+                count = try!(write_packet(state, count, n, w));
+                state = g;
+            }
+        }
+
+        count = try!(write_packet(state, count, n, w));
+
+        // If count fits, then fill it in.
+        if count <= ::std::u8::MAX as usize {
+            let pos2 = try!(w.seek(SeekFrom::Current(0)));
+            try!(w.seek(SeekFrom::Start(pos1)));
+            try!(w.write_u8(count as u8));
+            try!(w.seek(SeekFrom::Start(pos2)));
+        }
+    }
+
+    // If odd number, pad it to be even.
+    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    if (pos1 - pos0) % 2 == 1 {
+        try!(w.write_u8(0));
+        pos1 = pos1 + 1;
+    }
+
+    Ok((pos1 - pos0) as usize)
+}
+
+fn combine_packets(s0: Group, s1: Group)
+        -> Option<Group> {
+    match (s0, s1) {
+        (_, Group::Diff(..)) => unreachable!(),
+
+        // Initialisation only.
+        (Group::Same(0, 0), _) => Some(s1),
+
+        // 1. Memset: length (1) + data (1)
+        //    Memset: length (1) + data (1)
+        //
+        // 2. Memcpy: length (1) + data (a)
+        //    Memcpy: data (b)
+        (Group::Same(idx, a), Group::Same(_, b)) => {
+            if 1 + a + b <= 4 {
+                Some(Group::Diff(idx, a + b))
+            } else {
+                None
+            }
+        },
+
+        // 1. Memcpy: length (1) + data (a)
+        //    Memset: length (1) + data (1)
+        //
+        // 2. Memcpy: length (1) + data (a)
+        //    Memcpy: data (b)
+        (Group::Diff(idx, a), Group::Same(_, b)) => {
+            if b <= 2 {
+                Some(Group::Diff(idx, a + b))
+            } else {
+                None
+            }
+        },
+    }
+}
+
+fn write_packet<W: Write>(
+        g: Group, count: usize, buf: &[u8], w: &mut W)
+        -> FlicResult<usize> {
+    let mut count = count;
+    match g {
+        Group::Same(idx, mut len) => {
+            let max = ::std::i8::MAX as usize;
+            while len > 0 {
+                let l = min(len, max);
+                try!(w.write_i8(l as i8));
+                try!(w.write_u8(buf[idx]));
+
+                len = len - l;
+                count = count + 1;
+            }
+        },
+        Group::Diff(mut idx, mut len) => {
+            let max = (-(::std::i8::MIN as i32)) as usize;
+            while len > 0 {
+                let l = min(len, max);
+                try!(w.write_i8((-(l as i32)) as i8));
+                try!(w.write_all(&buf[idx..(idx + l)]));
+
+                idx = idx + l;
+                len = len - l;
+                count = count + 1;
+            }
+        },
+    }
+
+    Ok(count)
+}
+
+
 #[cfg(test)]
 mod tests {
-    use ::RasterMut;
-    use super::decode_fli_brun;
+    use std::io::Cursor;
+    use ::{Raster,RasterMut};
+    use super::*;
 
     #[test]
     fn test_decode_fli_brun() {
@@ -101,5 +223,38 @@ mod tests {
         }
 
         assert_eq!(&buf[0..8], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_brun() {
+        let src = [
+            0xAB, 0xAB, 0xAB,
+            0x01, 0x23, 0x45, 0x67, 0x89 ];
+
+        let expected = [
+            5,          // count 5
+            3,          // length 3
+            0xAB,
+            (-5i8) as u8,   // length -5
+            0x01, 0x23, 0x45, 0x67, 0x89,
+            127,  0x00, // length 127
+            127,  0x00, // length 127
+            58,   0x00, // length 59
+            0x00 ];     // even
+
+        const SCREEN_W: usize = 320;
+        const SCREEN_H: usize = 1;
+        const NUM_COLS: usize = 256;
+        let mut buf = [0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * NUM_COLS];
+        buf[0..8].copy_from_slice(&src[..]);
+
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
+        let res = encode_fli_brun(&next, &mut enc);
+        assert!(res.is_ok());
+
+        assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }
