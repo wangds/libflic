@@ -138,13 +138,10 @@ fn render_to_texture(
             for x in 0..w {
                 let offset = pitch * y + 3 * x;
                 let c = buf[w * y + x] as usize;
-                let r = pal[3 * c + 0];
-                let g = pal[3 * c + 1];
-                let b = pal[3 * c + 2];
 
-                buffer[offset + 0] = (r << 2) | (r >> 4);
-                buffer[offset + 1] = (g << 2) | (g >> 4);
-                buffer[offset + 2] = (b << 2) | (b >> 4);
+                buffer[offset + 0] = pal[3 * c + 0];
+                buffer[offset + 1] = pal[3 * c + 1];
+                buffer[offset + 2] = pal[3 * c + 2];
             }
         }
     }).unwrap();
