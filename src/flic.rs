@@ -1,12 +1,12 @@
 //! FLIC implementation.
 
 use std::fs::File;
-use std::io::{Cursor,Read,Seek,SeekFrom};
+use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use std::path::{Path,PathBuf};
 use byteorder::LittleEndian as LE;
-use byteorder::ReadBytesExt;
+use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicError,FlicResult,RasterMut};
+use ::{FlicError,FlicResult,Raster,RasterMut};
 use codec::*;
 
 /// Magic for a FLI file - Original Animator FLI Files.
@@ -48,6 +48,16 @@ pub struct FlicFile {
     file: File,
 }
 
+/// FLIC animation writer, with a File handle.
+///
+/// Opens and holds onto the file handle until it is closed.
+#[allow(dead_code)]
+pub struct FlicFileWriter {
+    hdr: FlicHeader,
+
+    filename: PathBuf,
+    file: Option<File>,
+}
 
 /// Size of a FLIC file header on disk.
 ///
@@ -141,7 +151,7 @@ impl FlicFile {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use std::path::Path;
     ///
     /// flic::FlicFile::open(Path::new("ex.fli"));
@@ -204,7 +214,7 @@ impl FlicFile {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use std::path::Path;
     ///
     /// if let Ok(ref mut flic) = flic::FlicFile::open(Path::new("ex.fli")) {
@@ -256,6 +266,123 @@ impl FlicFile {
         }
 
         Ok(res)
+    }
+}
+
+/*--------------------------------------------------------------*/
+
+impl FlicFileWriter {
+    /// Open a file for writing FLICs.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::Path;
+    ///
+    /// const SCREEN_W: u16 = 320;
+    /// const SCREEN_H: u16 = 200;
+    /// const speed_jiffies: u16 = 5;
+    ///
+    /// flic::flic::FlicFileWriter::open(Path::new("ex.fli"), SCREEN_W, SCREEN_H, speed_jiffies);
+    /// ```
+    pub fn open(filename: &Path,
+            w: u16, h: u16, speed_jiffies: u16)
+            -> FlicResult<Self> {
+        let mut file = try!(File::create(filename));
+
+        // Reserve space for header.
+        try!(file.write_all(&[0; SIZE_OF_FLIC_HEADER]));
+
+        let hdr = FlicHeader {
+            size: 0,
+            frame_count: 0,
+            w: w,
+            h: h,
+            speed_jiffies: speed_jiffies,
+        };
+
+        Ok(FlicFileWriter{
+            hdr: hdr,
+            filename: filename.to_path_buf(),
+            file: Some(file),
+        })
+    }
+
+    /// Close the FLIC file.
+    ///
+    /// You must close the FLIC writer after you have supplied all the
+    /// frames, including the ring frame, to write out the header.
+    ///
+    /// The FLIC writer is not usable after being closed.
+    pub fn close(mut self) -> FlicResult<()> {
+        if let Some(mut file) = self.file.take() {
+            let size = try!(file.seek(SeekFrom::Current(0)));
+            if size > ::std::u32::MAX as u64 {
+                return Err(FlicError::ExceededLimit);
+            }
+
+            if self.hdr.frame_count <= 2 {
+                return Err(FlicError::Corrupted);
+            }
+
+            self.hdr.size = size as u32;
+            self.hdr.frame_count = self.hdr.frame_count - 1;
+            try!(file.seek(SeekFrom::Start(0)));
+            try!(write_flic_header(&self.hdr, &mut file));
+        }
+
+        Ok(())
+    }
+
+    /// Encode the next frame in the FLIC.
+    ///
+    /// You must supply the previous frame buffer, or None if it is
+    /// the first frame.  Upon reaching the last frame in the
+    /// animation, you must also supply the first frame to create the
+    /// ring frame.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::Path;
+    /// use flic::flic::FlicFileWriter;
+    ///
+    /// const SCREEN_W: u16 = 320;
+    /// const SCREEN_H: u16 = 200;
+    /// const NUM_COLS: usize = 256;
+    /// const speed_jiffies: u16 = 5;
+    /// let buf = [0; (SCREEN_W * SCREEN_H) as usize];
+    /// let pal = [0; 3 * NUM_COLS];
+    ///
+    /// if let Ok(mut flic) = FlicFileWriter::open(
+    ///         Path::new("ex.fli"), SCREEN_W, SCREEN_H, speed_jiffies) {
+    ///     let raster = flic::Raster::new(SCREEN_W as usize, SCREEN_H as usize, &buf, &pal);
+    ///     flic.write_next_frame(None, &raster);
+    ///     flic.write_next_frame(Some(&raster), &raster);
+    ///     flic.close();
+    /// }
+    /// ```
+    pub fn write_next_frame(&mut self, prev: Option<&Raster>, next: &Raster)
+            -> FlicResult<()> {
+        if let Some(mut file) = self.file.as_ref() {
+            try!(write_next_frame(prev, next, &mut file));
+
+            self.hdr.frame_count = self.hdr.frame_count + 1;
+
+            Ok(())
+        } else {
+            Err(FlicError::NoFile)
+        }
+    }
+}
+
+impl Drop for FlicFileWriter {
+    /// A method called when the value goes out of scope.
+    fn drop(&mut self) {
+        if self.file.is_some() {
+            println!("Warning: {} was not closed, may be corrupt.",
+                    self.filename.to_string_lossy());
+        }
     }
 }
 
@@ -423,4 +550,155 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
     }
 
     Ok(chunks)
+}
+
+/*--------------------------------------------------------------*/
+
+/// Write the FLIC header.
+fn write_flic_header<W: Write + Seek>(
+        hdr: &FlicHeader, w: &mut W)
+        -> FlicResult<()> {
+    let depth = 8;
+    let flags = 0;
+    try!(w.write_u32::<LE>(hdr.size));
+    try!(w.write_u16::<LE>(FLIH_MAGIC));
+    try!(w.write_u16::<LE>(hdr.frame_count));
+    try!(w.write_u16::<LE>(hdr.w));
+    try!(w.write_u16::<LE>(hdr.h));
+    try!(w.write_u16::<LE>(depth));
+    try!(w.write_u16::<LE>(flags));
+    try!(w.write_u16::<LE>(hdr.speed_jiffies));
+    Ok(())
+}
+
+/// Write the next frame.
+fn write_next_frame<W: Write + Seek>(
+        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+
+    // Reserve space for chunk.
+    try!(w.write_all(&[0; SIZE_OF_FLIC_FRAME]));
+
+    let size1 = try!(write_color_data(prev, next, w));
+    let size2 = try!(write_pixel_data(prev, next, w));
+    let size = SIZE_OF_FLIC_FRAME + size1 + size2;
+
+    if size > ::std::u32::MAX as usize {
+        return Err(FlicError::ExceededLimit);
+    }
+
+    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+
+    try!(w.seek(SeekFrom::Start(pos0)));
+    if size > 0 {
+        let num_chunks
+            = if size1 > 0 { 1 } else { 0 }
+            + if size2 > 0 { 1 } else { 0 };
+
+        try!(w.write_u32::<LE>(size as u32));
+        try!(w.write_u16::<LE>(FCID_FRAME));
+        try!(w.write_u16::<LE>(num_chunks));
+        try!(w.seek(SeekFrom::Start(pos1)));
+        Ok(size)
+    } else {
+        Ok(0)
+    }
+}
+
+/// Write the next frame's palette.
+fn write_color_data<W: Write + Seek>(
+        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+
+    // Reserve space for chunk.
+    try!(w.write_all(&[0; SIZE_OF_CHUNK]));
+
+    let size = try!(encode_fli_color64(prev, next, w));
+    if SIZE_OF_CHUNK + size > ::std::u32::MAX as usize {
+        return Err(FlicError::ExceededLimit);
+    }
+
+    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+
+    try!(w.seek(SeekFrom::Start(pos0)));
+    if size > 0 {
+        try!(w.write_u32::<LE>((SIZE_OF_CHUNK + size) as u32));
+        try!(w.write_u16::<LE>(FLI_COLOR64));
+        try!(w.seek(SeekFrom::Start(pos1)));
+        Ok(SIZE_OF_CHUNK + size)
+    } else {
+        Ok(0)
+    }
+}
+
+/// Write the next frame's pixels.
+fn write_pixel_data<W: Write + Seek>(
+        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+
+    // Reserve space for chunk.
+    try!(w.write_all(&[0; SIZE_OF_CHUNK]));
+
+    let mut chunk: Option<(usize, u16)> = None;
+
+    // Try FLI_LC.
+    if chunk.is_none() && prev.is_some() {
+        match encode_fli_lc(prev.unwrap(), next, w) {
+            Ok(size) =>
+                if size == 0 {
+                    try!(w.seek(SeekFrom::Start(pos0)));
+                    return Ok(0);
+                } else if size < next.w * next.h {
+                    chunk = Some((size, FLI_LC));
+                },
+
+            Err(FlicError::ExceededLimit) => {
+                try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+            },
+
+            Err(e) =>
+                return Err(e),
+        }
+    }
+
+    // Try FLI_BRUN.
+    if chunk.is_none() {
+        match encode_fli_brun(next, w) {
+            Ok(size) =>
+                if size < next.w * next.h {
+                    chunk = Some((size, FLI_BRUN));
+                },
+
+            Err(FlicError::ExceededLimit) => {
+                try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+            },
+
+            Err(e) =>
+                return Err(e),
+        }
+    }
+
+    // Try FLI_COPY.
+    if chunk.is_none() {
+        let size = try!(encode_fli_copy(next, w));
+        chunk = Some((size, FLI_COPY));
+    }
+
+    let (size, magic) = chunk.expect("unreachable");
+    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    assert_eq!(SIZE_OF_CHUNK + size, (pos1 - pos0) as usize);
+
+    try!(w.seek(SeekFrom::Start(pos0)));
+    if pos1 - pos0 > ::std::u32::MAX as u64 {
+        return Err(FlicError::ExceededLimit);
+    }
+
+    try!(w.write_u32::<LE>((pos1 - pos0) as u32));
+    try!(w.write_u16::<LE>(magic));
+    try!(w.seek(SeekFrom::Start(pos1)));
+
+    Ok((pos1 - pos0) as usize)
 }
