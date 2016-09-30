@@ -30,6 +30,10 @@ pub fn decode_fli_color64(src: &[u8], dst: &mut RasterMut)
 
         let start = idx0 + 3 * nskip;
         let end = start + 3 * ncopy;
+        if end > dst.pal.len() {
+            return Err(FlicError::Corrupted);
+        }
+
         try!(r.read_exact(&mut dst.pal[start..end]));
 
         idx0 = end;

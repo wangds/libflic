@@ -68,7 +68,9 @@ fn main() {
                         render_to_texture(&mut texture, FLIC_WIDTH, FLIC_HEIGHT, &buf, &pal);
                         present_to_screen(&mut renderer, &texture);
                     },
-                    _ => (),
+                    Err(e) => {
+                        println!("Error occurred - {}", e);
+                    },
                 }
             } else {
                 renderer.clear();

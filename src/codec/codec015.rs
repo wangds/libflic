@@ -4,7 +4,7 @@ use std::cmp::min;
 use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicResult,Raster,RasterMut};
+use ::{FlicError,FlicResult,Raster,RasterMut};
 use super::{Group,GroupByValue};
 
 /// Magic for a FLI_BRUN chunk - Byte Run Length Compression.
@@ -52,6 +52,10 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
             if signed_length >= 0 {
                 let start = x0;
                 let end = start + signed_length as usize;
+                if end > row.len() {
+                    return Err(FlicError::Corrupted);
+                }
+
                 let c = try!(r.read_u8());
                 for e in &mut row[start..end] {
                     *e = c;
@@ -61,6 +65,10 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
             } else {
                 let start = x0;
                 let end = start + (-signed_length) as usize;
+                if end > row.len() {
+                    return Err(FlicError::Corrupted);
+                }
+
                 try!(r.read_exact(&mut row[start..end]));
 
                 x0 = end;

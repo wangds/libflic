@@ -32,6 +32,10 @@ pub fn decode_fli_wrun(src: &[u8], dst: &mut RasterMut)
         if signed_length >= 0 {
             let start = idx0;
             let end = start + 2 * signed_length as usize;
+            if end > dst.buf.len() {
+                return Err(FlicError::Corrupted);
+            }
+
             let c0 = try!(r.read_u8());
             let c1 = try!(r.read_u8());
             for e in &mut dst.buf[start..end].chunks_mut(2) {
@@ -43,6 +47,10 @@ pub fn decode_fli_wrun(src: &[u8], dst: &mut RasterMut)
         } else {
             let start = idx0;
             let end = start + 2 * (-signed_length) as usize;
+            if end > dst.buf.len() {
+                return Err(FlicError::Corrupted);
+            }
+
             try!(r.read_exact(&mut dst.buf[start..end]));
 
             idx0 = end;

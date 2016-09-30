@@ -32,12 +32,20 @@ pub fn decode_fli_sbsrsc(src: &[u8], dst: &mut RasterMut)
         if signed_length >= 0 {
             let start = idx0 + nskip;
             let end = start + signed_length as usize;
+            if end > dst.buf.len() {
+                return Err(FlicError::Corrupted);
+            }
+
             try!(r.read_exact(&mut dst.buf[start..end]));
 
             idx0 = end;
         } else {
             let start = idx0 + nskip;
             let end = start + (-signed_length) as usize;
+            if end > dst.buf.len() {
+                return Err(FlicError::Corrupted);
+            }
+
             let c = try!(r.read_u8());
             for e in &mut dst.buf[start..end] {
                 *e = c;
