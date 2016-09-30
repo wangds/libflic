@@ -42,11 +42,15 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
     let start = dst.stride * dst.y;
     let end = dst.stride * (dst.y + dst.h);
     for row in dst.buf[start..end].chunks_mut(dst.stride) {
-        // TODO: count value should be ignored, use width instead.
-        let count = try!(r.read_u8());
-        let mut x0 = dst.x;
+        let start = dst.x;
+        let end = start + dst.w;
+        let mut row = &mut row[start..end];
+        let mut x0 = 0;
 
-        for _ in 0..count {
+        // Skip obsolete count byte.
+        let _count = try!(r.read_u8());
+
+        while x0 < row.len() {
             let signed_length = try!(r.read_i8()) as i32;
 
             if signed_length >= 0 {
@@ -215,10 +219,9 @@ mod tests {
 
         let expected = [
             0xAB, 0xAB, 0xAB,
-            0x01, 0x23, 0x45, 0x67,
-            0x00 ];
+            0x01, 0x23, 0x45, 0x67 ];
 
-        const SCREEN_W: usize = 320;
+        const SCREEN_W: usize = 7;
         const SCREEN_H: usize = 1;
         const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
@@ -230,7 +233,7 @@ mod tests {
             assert!(res.is_ok());
         }
 
-        assert_eq!(&buf[0..8], &expected[..]);
+        assert_eq!(&buf[..], &expected[..]);
     }
 
     #[test]
