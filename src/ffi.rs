@@ -88,7 +88,7 @@ pub extern "C" fn flicrs_decode_fli_sbsrsc(
 /// Decode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_color64(
-        src: *const u8, src_len: usize, dst: *mut CRasterMut)
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -107,7 +107,7 @@ pub extern "C" fn flicrs_decode_fli_color64(
 /// Decode a FLI_LC chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_lc(
-        src: *const u8, src_len: usize, dst: *mut CRasterMut)
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -152,7 +152,7 @@ pub extern "C" fn flicrs_decode_fli_icolors(
 /// Decode a FLI_BRUN chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_brun(
-        src: *const u8, src_len: usize, dst: *mut CRasterMut)
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -171,7 +171,7 @@ pub extern "C" fn flicrs_decode_fli_brun(
 /// Decode a FLI_COPY chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_copy(
-        src: *const u8, src_len: usize, dst: *mut CRasterMut)
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
