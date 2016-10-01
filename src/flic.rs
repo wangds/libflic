@@ -77,6 +77,35 @@ struct FlicHeader {
 }
 
 
+/// Magic for a FLIC pre-frame chunk - FLIC Prefix Chunk.
+///
+/// An optional prefix chunk may immediately follow the animation file
+/// header.  This chunk is used to store auxiliary data which is not
+/// directly involved in the animation playback.  The prefix chunk
+/// starts with a 16-byte header (identical in structure to a frame
+/// header), as follows:
+///
+///   Offset | Length |   Name   | Description
+///   ------:| ------:|:--------:| -----------------------------------
+///        0 |      4 |   size   | The size of the prefix chunk, including this header and all subordinate chunks that follow.
+///        4 |      2 |   type   | Prefix chunk identifier.  Always 0xF100.
+///        6 |      2 |  chunks  | Number of subordinate chunks in the prefix chunk.
+///        8 |      8 | reserved | Unused space, set to zeroes.
+///
+/// To determine whether a prefix chunk is present, read the 16-byte
+/// header following the file header.  If the type value is 0xF100,
+/// it's a prefix chunk.  If the value is 0xF1FA it's the first frame
+/// chunk, and no prefix chunk exists.
+///
+/// # Note
+///
+/// Programs other than Animator Pro should never need to create FLIC
+/// files that contain a prefix chunk.  Programs reading a FLIC file
+/// should skip the prefix chunk by using the size value in the prefix
+/// header to read and discard the prefix, or by seeking directly to
+/// the first frame using the oframe1 field from the file header.
+pub const FCID_PREFIX: u16 = 0xF100;
+
 /// Magic for a FLIC frame - FLIC Frame Chunks.
 ///
 /// Frame chunks contain the pixel and color data for the animation.
@@ -439,20 +468,43 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
 
     // Add 1 to frame count to account for the ring frame.
     for frame_num in 0..(hdr.frame_count + 1) {
-        try!(file.seek(SeekFrom::Start(offset)));
-
         let mut buf = [0; SIZE_OF_FLIC_FRAME];
+        let mut size;
+        let mut magic;
+        let mut num_chunks;
+
+        try!(file.seek(SeekFrom::Start(offset)));
         try!(file.read_exact(&mut buf));
 
-        let mut r = Cursor::new(&buf[..]);
-        let size = try!(r.read_u32::<LE>());
-        let magic = try!(r.read_u16::<LE>());
-        let num_chunks = try!(r.read_u16::<LE>()) as usize;
+        {
+            let mut r = Cursor::new(&buf[..]);
+            size = try!(r.read_u32::<LE>());
+            magic = try!(r.read_u16::<LE>());
+            num_chunks = try!(r.read_u16::<LE>()) as usize;
 
-        if size < (SIZE_OF_FLIC_FRAME as u32)
-                || offset + (size as u64) > (hdr.size as u64) {
-            return Err(FlicError::Corrupted);
+            if size < (SIZE_OF_FLIC_FRAME as u32)
+                    || offset + (size as u64) > (hdr.size as u64) {
+                return Err(FlicError::Corrupted);
+            }
         }
+
+        if frame_num == 0 && magic == FCID_PREFIX {
+            offset = offset + size as u64;
+
+            try!(file.seek(SeekFrom::Start(offset)));
+            try!(file.read_exact(&mut buf));
+
+            let mut r = Cursor::new(&buf[..]);
+            size = try!(r.read_u32::<LE>());
+            magic = try!(r.read_u16::<LE>());
+            num_chunks = try!(r.read_u16::<LE>()) as usize;
+
+            if size < (SIZE_OF_FLIC_FRAME as u32)
+                    || offset + (size as u64) > (hdr.size as u64) {
+                return Err(FlicError::Corrupted);
+            }
+        }
+
         if magic != FCID_FRAME {
             return Err(FlicError::BadMagic);
         }
