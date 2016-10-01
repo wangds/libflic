@@ -14,8 +14,6 @@ const DEFAULT_SCREEN_WIDTH: u32 = 640;
 const DEFAULT_SCREEN_HEIGHT: u32 = 400;
 const MIN_SCREEN_WIDTH: u32 = 320;
 const MIN_SCREEN_HEIGHT: u32 = 200;
-const FLIC_WIDTH: usize = 320;
-const FLIC_HEIGHT: usize = 200;
 
 fn main() {
     let mut filenames: Vec<String> = env::args().skip(1).collect();
@@ -43,15 +41,16 @@ fn main() {
     let mut timer = sdl.timer().unwrap();
     let mut event_pump = sdl.event_pump().unwrap();
 
-    let mut texture = renderer.create_texture_streaming(
-            PixelFormatEnum::RGB24, FLIC_WIDTH as u32, FLIC_HEIGHT as u32).unwrap();
-    let mut buf = vec![0; FLIC_WIDTH * FLIC_HEIGHT];
+    let mut flic_w = 0;
+    let mut flic_h = 0;
+    let mut texture = None;
+    let mut buf = vec![0; flic_w * flic_h];
     let mut pal = vec![0; 3 * 256];
 
     let mut last_tstart: u32 = 0;
     'mainloop: loop {
         let msec = match flic {
-            Some(ref f) => 1000 * f.speed_jiffies() as u32 / 70,
+            Some(ref f) => f.speed_msec(),
             None => 100,
         };
 
@@ -61,12 +60,12 @@ fn main() {
 
         let redraw = tstart > last_tstart;
         if redraw {
-            if let Some(ref mut flic) = flic {
+            if let (Some(ref mut flic), Some(ref mut texture)) = (flic.as_mut(), texture.as_mut()) {
                 match flic.read_next_frame(
-                        &mut RasterMut::new(FLIC_WIDTH, FLIC_HEIGHT, &mut buf, &mut pal)) {
+                        &mut RasterMut::new(flic_w, flic_h, &mut buf, &mut pal)) {
                     Ok(_) => {
-                        render_to_texture(&mut texture, FLIC_WIDTH, FLIC_HEIGHT, &buf, &pal);
-                        present_to_screen(&mut renderer, &texture);
+                        render_to_texture(texture, flic_w, flic_h, &buf, &pal);
+                        present_to_screen(&mut renderer, texture);
                     },
                     Err(e) => {
                         println!("Error occurred - {}", e);
@@ -108,6 +107,17 @@ fn main() {
                 match FlicFile::open(path.as_path()) {
                     Ok(f) => {
                         println!("Loaded {}", &filenames[next_file]);
+
+                        if f.width() as usize != flic_w || f.height() as usize != flic_h {
+                            flic_w = f.width() as usize;
+                            flic_h = f.height() as usize;
+
+                            texture = renderer.create_texture_streaming(
+                                        PixelFormatEnum::RGB24,
+                                        flic_w as u32, flic_h as u32).ok();
+                            buf = vec![0; flic_w * flic_h];
+                        }
+
                         flic = Some(f);
                         last_tstart = 0;
                         next_file = next_file + 1;
