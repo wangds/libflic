@@ -12,6 +12,7 @@ use std::iter::Zip;
 use ::{FlicError,FlicResult,RasterMut};
 
 module!(codec001);
+module!(codec004);
 module!(codec010);
 module!(codec011);
 module!(codec012);
@@ -73,7 +74,7 @@ struct GroupByValue<'a> {
 /// Returns true if the chunk type modifies the palette.
 pub fn chunk_modifies_palette(magic: u16)
         -> bool {
-    (magic == FLI_COLOR64) || (magic == FLI_ICOLORS)
+    (magic == FLI_COLOR256) || (magic == FLI_COLOR64) || (magic == FLI_ICOLORS)
 }
 
 /// Decode a chunk, based on the chunk type.
@@ -81,6 +82,7 @@ pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
         -> FlicResult<()> {
     match magic {
         FLI_WRUN => try!(decode_fli_wrun(&buf, dst)),
+        FLI_COLOR256 => try!(decode_fli_color256(&buf, dst)),
         FLI_SBSRSC => try!(decode_fli_sbsrsc(&buf, dst)),
         FLI_COLOR64 => try!(decode_fli_color64(&buf, dst)),
         FLI_LC => try!(decode_fli_lc(&buf, dst)),

@@ -29,6 +29,11 @@ flicrs_decode_fli_wrun(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
 
+extern unsigned int
+flicrs_decode_fli_color256(
+        const unsigned char *src, size_t src_len,
+        struct CRasterMut *dst);
+
 extern void
 flicrs_decode_fli_sbsrsc(
         const unsigned char *src, size_t src_len,

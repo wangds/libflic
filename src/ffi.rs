@@ -70,6 +70,25 @@ pub extern "C" fn flicrs_decode_fli_wrun(
     }
 }
 
+/// Decode a FLI_COLOR256 chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_decode_fli_color256(
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        -> c_uint {
+    if src.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    match run_decoder![decode_fli_color256(src, src_len, dst)] {
+        Ok(_) => return 0,
+        Err(e) => {
+            printerrorln!(e);
+            return 1;
+        },
+    }
+}
+
 /// Decode a FLI_SBSRSC chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_sbsrsc(
