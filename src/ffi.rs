@@ -457,6 +457,19 @@ pub extern "C" fn flicrs_height(flic: *const FlicFile)
     flic.height() as c_uint
 }
 
+/// Number of milliseconds to delay between each frame during playback.
+#[no_mangle]
+pub extern "C" fn flicrs_speed_msec(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.speed_msec() as c_uint
+}
+
 /// Number of jiffies to delay between each frame during playback.
 #[no_mangle]
 pub extern "C" fn flicrs_speed_jiffies(flic: *const FlicFile)

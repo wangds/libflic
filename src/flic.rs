@@ -1,5 +1,6 @@
 //! FLIC implementation.
 
+use std::cmp::min;
 use std::fs::File;
 use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use std::path::{Path,PathBuf};
@@ -34,6 +35,51 @@ use codec::*;
 ///       18 |    110 | reserved | Unused space, set to zeroes.
 pub const FLIH_MAGIC: u16 = 0xAF11;
 
+/// Magic for a FLC file - Animator Pro FLC Files.
+///
+/// This is the main animation file format created by Animator Pro.
+/// The file contains a 128-byte header, followed by an optional
+/// prefix chunk, followed by one or more frame chunks.
+///
+/// The prefix chunk, if present, contains Animator Pro settings
+/// information, CEL placement information, and other auxiliary data.
+///
+/// A frame chunk exists for each frame in the animation.  In
+/// addition, a ring frame follows all the animation frames.  Each
+/// frame chunk contains color palette information and/or pixel data.
+///
+/// The ring frame contains delta-compressed information to loop from
+/// the last frame of the FLIC back to the first.  It can be helpful
+/// to think of the ring frame as a copy of the first frame,
+/// compressed in a different way.  All FLIC files will contain a ring
+/// frame, including a single-frame FLIC.
+///
+/// A FLC file begins with a 128-byte header, described below.  All
+/// lengths and offsets are in bytes.  All values stored in the header
+/// fields are unsigned.
+///
+///   Offset | Length |   Name   | Description
+///   ------:| ------:|:--------:| -----------------------------------
+///        0 |      4 |   size   | The size of the entire animation file, including this file header.
+///        4 |      2 |   magic  | File format identifier.  Always 0xAF12.
+///        6 |      2 |  frames  | Number of frames in the FLIC.  This count does not include the ring frame.  FLC files have a maximum length of 4000 frames.
+///        8 |      2 |   width  | Screen width in pixels.
+///       10 |      2 |   height | Screen height in pixels.
+///       12 |      2 |   depth  | Bits per pixel (always 8).
+///       14 |      2 |   flags  | Set to 0x0003 after ring frame is written and FLIC header is updated.  This indicates that the file was properly finished and closed.
+///       16 |      4 |   speed  | Number of milliseconds to delay between each frame during playback.
+///       20 |      2 | reserved | Unused word, set to 0.
+///       22 |      4 |  created | The MSDOS-formatted date and time of the file's creation.
+///       26 |      4 |  creator | The serial number of the Animator Pro program used to create the file.  If the file was created by some other program using the FlicLib development kit, this value is 0x464C4942 ("FLIB").
+///       30 |      4 |  updated | The MSDOS-formatted date and time of the file's most recent update.
+///       34 |      4 |  updater | Indicates who last updated the file.  See the description of creator.
+///       38 |      2 |  aspectx | The x-axis aspect ratio at which the file was created.
+///       40 |      2 |  aspecty | The y-axis aspect ratio at which the file was created.  Most often, the x:y aspect ratio will be 1:1.  A 320x200 FLIC has a ratio of 6:5.
+///       42 |     38 | reserved | Unused space, set to zeroes.
+///       80 |      4 |  oframe1 | Offset from the beginning of the file to the first animation frame chunk.
+///       84 |      4 |  oframe2 | Offset from the beginning of the file to the second animation frame chunk.  This value is used when looping from the ring frame back to the second frame during playback.
+///       88 |     40 | reserved | Unused space, set to zeroes.
+pub const FLIHR_MAGIC: u16 = 0xAF12;
 
 /// FLIC animation, with a File handle.
 ///
@@ -69,10 +115,12 @@ pub const SIZE_OF_FLIC_HEADER: usize = 128;
 /// FLIC header.
 #[allow(dead_code)]
 struct FlicHeader {
+    magic: u16,
     size: u32,
     frame_count: u16,
     w: u16,
     h: u16,
+    speed_msec: u32,
     speed_jiffies: u16,
 }
 
@@ -228,6 +276,11 @@ impl FlicFile {
         self.hdr.h
     }
 
+    /// Number of milliseconds to delay between each frame during playback.
+    pub fn speed_msec(&self) -> u32 {
+        self.hdr.speed_msec
+    }
+
     /// Number of jiffies to delay between each frame during playback.
     /// A jiffy is 1/70 of a second.
     pub fn speed_jiffies(&self) -> u16 {
@@ -323,10 +376,12 @@ impl FlicFileWriter {
         try!(file.write_all(&[0; SIZE_OF_FLIC_HEADER]));
 
         let hdr = FlicHeader {
+            magic: FLIH_MAGIC,
             size: 0,
             frame_count: 0,
             w: w,
             h: h,
+            speed_msec: (speed_jiffies as u32) * 1000 / 70,
             speed_jiffies: speed_jiffies,
         };
 
@@ -427,9 +482,18 @@ fn read_flic_header(file: &mut File)
     let size = try!(r.read_u32::<LE>());
     let magic = try!(r.read_u16::<LE>());
 
-    if magic != FLIH_MAGIC {
-        return Err(FlicError::BadMagic);
+    match magic {
+        FLIH_MAGIC => read_fli_header(&mut r, size, magic),
+        FLIHR_MAGIC => read_flc_header(&mut r, size, magic),
+        _ => Err(FlicError::BadMagic),
     }
+}
+
+/// Read the original Animator FLI header.
+fn read_fli_header(
+        r: &mut Cursor<&[u8]>, size: u32, magic: u16)
+        -> FlicResult<FlicHeader> {
+    assert_eq!(magic, FLIH_MAGIC);
 
     let frame_count = try!(r.read_u16::<LE>());
     let width = try!(r.read_u16::<LE>());
@@ -452,10 +516,57 @@ fn read_flic_header(file: &mut File)
     }
 
     Ok(FlicHeader{
+        magic: magic,
         size: size,
         frame_count: frame_count,
         w: width,
         h: height,
+        speed_msec: (jiffy_speed as u32) * 1000 / 70,
+        speed_jiffies: jiffy_speed,
+    })
+}
+
+/// Read the Animator Pro FLC header.
+fn read_flc_header(
+        r: &mut Cursor<&[u8]>, size: u32, magic: u16)
+        -> FlicResult<FlicHeader> {
+    assert_eq!(magic, FLIHR_MAGIC);
+
+    let frame_count = try!(r.read_u16::<LE>());
+    let width = try!(r.read_u16::<LE>());
+    let height = try!(r.read_u16::<LE>());
+    let _bpp = try!(r.read_u16::<LE>());
+    let _flags = try!(r.read_u16::<LE>());
+    let speed = try!(r.read_u32::<LE>());
+    try!(r.seek(SeekFrom::Current(2)));
+    let _created = try!(r.read_u32::<LE>());
+    let _creator = try!(r.read_u32::<LE>());
+    let _updated = try!(r.read_u32::<LE>());
+    let _updater = try!(r.read_u32::<LE>());
+    let _aspectx = try!(r.read_u16::<LE>());
+    let _aspecty = try!(r.read_u16::<LE>());
+    try!(r.seek(SeekFrom::Current(38)));
+    let _oframe1 = try!(r.read_u32::<LE>());
+    let _oframe2 = try!(r.read_u32::<LE>());
+
+    match r.seek(SeekFrom::Current(40)) {
+        Ok(128) => (),
+        _ => unreachable!(),
+    };
+
+    if frame_count <= 0 || width <= 0 || height <= 0 {
+        return Err(FlicError::Corrupted);
+    }
+
+    let jiffy_speed = min((speed as u64) * 70 / 1000, ::std::u16::MAX as u64) as u16;
+
+    Ok(FlicHeader{
+        magic: magic,
+        size: size,
+        frame_count: frame_count,
+        w: width,
+        h: height,
+        speed_msec: speed,
         speed_jiffies: jiffy_speed,
     })
 }

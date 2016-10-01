@@ -121,6 +121,10 @@ flicrs_height(
         struct FlicFile *flic);
 
 extern unsigned int
+flicrs_speed_msec(
+        struct FlicFile *flic);
+
+extern unsigned int
 flicrs_speed_jiffies(
         struct FlicFile *flic);
 
