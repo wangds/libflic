@@ -21,6 +21,7 @@ module!(codec013);
 module!(codec014);
 module!(codec015);
 module!(codec016);
+module!(codec018);
 
 /*--------------------------------------------------------------*/
 
@@ -92,6 +93,12 @@ pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
         FLI_ICOLORS => decode_fli_icolors(dst),
         FLI_BRUN => try!(decode_fli_brun(&buf, dst)),
         FLI_COPY => try!(decode_fli_copy(&buf, dst)),
+
+        // Postage stamps should not be decoded in the same loop as
+        // the main animation; they have different sizes and work on
+        // different buffers and palettes.
+        FLI_PSTAMP => (),
+
         _ => return Err(FlicError::BadMagic),
     }
 
