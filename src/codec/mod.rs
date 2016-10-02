@@ -13,6 +13,7 @@ use ::{FlicError,FlicResult,RasterMut};
 
 module!(codec001);
 module!(codec004);
+module!(codec007);
 module!(codec010);
 module!(codec011);
 module!(codec012);
@@ -83,6 +84,7 @@ pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
     match magic {
         FLI_WRUN => try!(decode_fli_wrun(&buf, dst)),
         FLI_COLOR256 => try!(decode_fli_color256(&buf, dst)),
+        FLI_SS2 => try!(decode_fli_ss2(&buf, dst)),
         FLI_SBSRSC => try!(decode_fli_sbsrsc(&buf, dst)),
         FLI_COLOR64 => try!(decode_fli_color64(&buf, dst)),
         FLI_LC => try!(decode_fli_lc(&buf, dst)),

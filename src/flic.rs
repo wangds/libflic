@@ -586,7 +586,7 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
                 }
             },
 
-            FLI_COLOR256 | FLI_COLOR64 | FLI_LC | FLI_BLACK | FLI_BRUN => (),
+            FLI_COLOR256 | FLI_SS2 | FLI_COLOR64 | FLI_LC | FLI_BLACK | FLI_BRUN => (),
 
             _ => println!("Warning: frame {} - unrecognised chunk type {}",
                     frame_num, magic),
