@@ -185,8 +185,9 @@ struct FlicFrame {
 /// Immediately following the frame header are the frame's subordinate
 /// data chunks.  When the chunks count in the frame header is zero,
 /// it indicates that this frame is identical to the previous frame.
-/// This implies that nochange is made to the screen or color palette,
-/// but the appropriate delay is still inserted during playback.
+/// This implies that no change is made to the screen or color
+/// palette, but the appropriate delay is still inserted during
+/// playback.
 ///
 /// Each data chunk within a frame chunk is formatted as follows:
 ///
