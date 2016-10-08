@@ -8,9 +8,8 @@ use std::ptr;
 use std::slice;
 use libc::{c_char,c_uint,size_t};
 
-use ::{Raster,RasterMut};
+use ::{FlicFile,FlicResult,Raster,RasterMut};
 use codec::*;
-use flic::FlicFile;
 
 /// Dummy opaque structure, equivalent to Raster<'a>.
 pub struct CRaster;
@@ -29,16 +28,6 @@ macro_rules! printerrorln {
     };
 }
 
-// Typical common decoder function signature:
-//  decode(src: &[u8], dst: &mut RasterMut) -> FlicError<...>
-macro_rules! run_decoder {
-    ($func:ident($src:ident, $src_len:ident, $dst:ident)) => {{
-        let src_slice = unsafe{ slice::from_raw_parts($src, $src_len) };
-        let dst_raster = unsafe{ transmute_raster_mut($dst) };
-        $func(src_slice, dst_raster)
-    }}
-}
-
 unsafe fn transmute_raster<'a>(src: *const CRaster)
         -> &'a Raster<'a> {
     let ptr: *const Raster = mem::transmute(src);
@@ -51,6 +40,48 @@ unsafe fn transmute_raster_mut<'a>(dst: *mut CRasterMut)
     &mut *ptr
 }
 
+fn run_decoder<F>(file: &'static str, line: u32,
+        decoder: F,
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        -> c_uint
+        where F: FnOnce(&[u8], &mut RasterMut) -> FlicResult<()> {
+    let src_slice = unsafe{ slice::from_raw_parts(src, src_len) };
+    let dst_raster = unsafe{ transmute_raster_mut(dst) };
+    match decoder(src_slice, dst_raster) {
+        Ok(_) => return 0,
+        Err(e) => {
+            println!("{}:{} - {}", file, line, e);
+            return 1;
+        },
+    }
+}
+
+fn run_encoder<F>(file: &'static str, line: u32,
+        encoder: F,
+        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        -> c_uint
+        where F: FnOnce(&mut Cursor<Vec<u8>>) -> FlicResult<usize> {
+    let mut buf: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+    match encoder(&mut buf) {
+        Ok(len) => {
+            unsafe{ ptr::write(out_len, len) };
+            if len <= max_len {
+                assert_eq!(len, buf.get_ref().len());
+                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
+                dst_slice[0..len].copy_from_slice(&buf.get_ref()[..]);
+                return 0;
+            } else {
+                println!("{}:{} - output buffer too small", file, line);
+                return 2;
+            }
+        },
+        Err(e) => {
+            println!("{}:{} - {}", file, line, e);
+            return 1;
+        },
+    }
+}
+
 /*--------------------------------------------------------------*/
 /* Codecs                                                       */
 /*--------------------------------------------------------------*/
@@ -58,16 +89,16 @@ unsafe fn transmute_raster_mut<'a>(dst: *mut CRasterMut)
 /// Decode a FLI_WRUN chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_wrun(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut) {
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
-        return;
+        return 1;
     }
 
-    match run_decoder!(decode_fli_wrun(src, src_len, dst)) {
-        Ok(_) => return,
-        Err(e) => printerrorln!(e),
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_wrun(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_COLOR256 chunk.
@@ -80,13 +111,9 @@ pub extern "C" fn flicrs_decode_fli_color256(
         return 1;
     }
 
-    match run_decoder![decode_fli_color256(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_color256(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_SS2 chunk.
@@ -99,28 +126,24 @@ pub extern "C" fn flicrs_decode_fli_ss2(
         return 1;
     }
 
-    match run_decoder![decode_fli_ss2(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_ss2(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_SBSRSC chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_sbsrsc(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut) {
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
-        return;
+        return 1;
     }
 
-    match run_decoder![decode_fli_sbsrsc(src, src_len, dst)] {
-        Ok(_) => return,
-        Err(e) => printerrorln!(e),
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_sbsrsc(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_COLOR64 chunk.
@@ -133,13 +156,9 @@ pub extern "C" fn flicrs_decode_fli_color64(
         return 1;
     }
 
-    match run_decoder![decode_fli_color64(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_color64(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_LC chunk.
@@ -152,39 +171,39 @@ pub extern "C" fn flicrs_decode_fli_lc(
         return 1;
     }
 
-    match run_decoder![decode_fli_lc(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_lc(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_BLACK chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_black(
-        dst: *mut CRasterMut) {
+        dst: *mut CRasterMut)
+        -> c_uint {
     if dst.is_null() {
         printerrorln!("bad input parameters");
-        return;
+        return 1;
     }
 
     let dst_raster = unsafe{ transmute_raster_mut(dst) };
     decode_fli_black(dst_raster);
+    return 0;
 }
 
 /// Decode a FLI_ICOLORS chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_icolors(
-        dst: *mut CRasterMut) {
+        dst: *mut CRasterMut)
+        -> c_uint {
     if dst.is_null() {
         printerrorln!("bad input parameters");
-        return;
+        return 1;
     }
 
     let dst_raster = unsafe{ transmute_raster_mut(dst) };
     decode_fli_icolors(dst_raster);
+    return 0;
 }
 
 /// Decode a FLI_BRUN chunk.
@@ -197,13 +216,9 @@ pub extern "C" fn flicrs_decode_fli_brun(
         return 1;
     }
 
-    match run_decoder![decode_fli_brun(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_brun(src, dst),
+            src, src_len, dst)
 }
 
 /// Decode a FLI_COPY chunk.
@@ -216,13 +231,9 @@ pub extern "C" fn flicrs_decode_fli_copy(
         return 1;
     }
 
-    match run_decoder![decode_fli_copy(src, src_len, dst)] {
-        Ok(_) => return 0,
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fli_copy(src, dst),
+            src, src_len, dst)
 }
 
 /// Encode a FLI_COLOR64 chunk.
@@ -242,25 +253,9 @@ pub extern "C" fn flicrs_encode_fli_color64(
         unsafe{ Some(transmute_raster(opt_prev)) }
     };
     let next_raster = unsafe{ transmute_raster(next) };
-
-    let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-    match encode_fli_color64(prev_raster, next_raster, &mut enc) {
-        Ok(len) => {
-            unsafe{ ptr::write(out_len, len) };
-            if len <= max_len {
-                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
-                dst_slice[0..len].copy_from_slice(&enc.get_ref()[..]);
-                return 0;
-            } else {
-                printerrorln!("output buffer too small");
-                return 2;
-            }
-        },
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_encoder(file!(), line!(),
+            |w| encode_fli_color64(prev_raster, next_raster, w),
+            out_buf, max_len, out_len)
 }
 
 /// Encode a FLI_LC chunk.
@@ -276,26 +271,9 @@ pub extern "C" fn flicrs_encode_fli_lc(
 
     let prev_raster = unsafe{ transmute_raster(prev) };
     let next_raster = unsafe{ transmute_raster(next) };
-
-    let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-    match encode_fli_lc(prev_raster, next_raster, &mut enc) {
-        Ok(len) => {
-            unsafe{ ptr::write(out_len, len) };
-            if len <= max_len {
-                assert_eq!(len, enc.get_ref().len());
-                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
-                dst_slice[0..len].copy_from_slice(&enc.get_ref()[..]);
-                return 0;
-            } else {
-                printerrorln!("output buffer too small");
-                return 2;
-            }
-        },
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_encoder(file!(), line!(),
+            |w| encode_fli_lc(prev_raster, next_raster, w),
+            out_buf, max_len, out_len)
 }
 
 /// Encode a FLI_BRUN chunk.
@@ -310,25 +288,9 @@ pub extern "C" fn flicrs_encode_fli_brun(
     }
 
     let next_raster = unsafe{ transmute_raster(next) };
-
-    let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-    match encode_fli_brun(next_raster, &mut enc) {
-        Ok(len) => {
-            unsafe{ ptr::write(out_len, len) };
-            if len <= max_len {
-                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
-                dst_slice[0..len].copy_from_slice(&enc.get_ref()[..]);
-                return 0;
-            } else {
-                printerrorln!("output buffer too small");
-                return 2;
-            }
-        },
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_encoder(file!(), line!(),
+            |w| encode_fli_brun(next_raster, w),
+            out_buf, max_len, out_len)
 }
 
 /// Encode a FLI_COPY chunk.
@@ -343,25 +305,9 @@ pub extern "C" fn flicrs_encode_fli_copy(
     }
 
     let next_raster = unsafe{ transmute_raster(next) };
-
-    let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
-    match encode_fli_copy(next_raster, &mut enc) {
-        Ok(len) => {
-            unsafe{ ptr::write(out_len, len) };
-            if len <= max_len {
-                let dst_slice = unsafe{ slice::from_raw_parts_mut(out_buf, max_len) };
-                dst_slice[0..len].copy_from_slice(&enc.get_ref()[..]);
-                return 0;
-            } else {
-                printerrorln!("output buffer too small");
-                return 2;
-            }
-        },
-        Err(e) => {
-            printerrorln!(e);
-            return 1;
-        },
-    }
+    run_encoder(file!(), line!(),
+            |w| encode_fli_copy(next_raster, w),
+            out_buf, max_len, out_len)
 }
 
 /*--------------------------------------------------------------*/

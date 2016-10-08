@@ -24,7 +24,7 @@ enum {
 /* Codecs                                                       */
 /*--------------------------------------------------------------*/
 
-extern void
+extern unsigned int
 flicrs_decode_fli_wrun(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
@@ -39,7 +39,7 @@ flicrs_decode_fli_ss2(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
 
-extern void
+extern unsigned int
 flicrs_decode_fli_sbsrsc(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
@@ -54,11 +54,11 @@ flicrs_decode_fli_lc(
         const unsigned char *src, size_t src_len,
         struct CRasterMut *dst);
 
-extern void
+extern unsigned int
 flicrs_decode_fli_black(
         struct CRasterMut *dst);
 
-extern void
+extern unsigned int
 flicrs_decode_fli_icolors(
         struct CRasterMut *dst);
 
