@@ -5,7 +5,7 @@ use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
-use super::{Group,GroupByValue};
+use super::{Group,GroupByValue,linscale};
 
 /// Magic for a FLI_BRUN chunk - Byte Run Length Compression.
 ///
@@ -33,6 +33,9 @@ use super::{Group,GroupByValue};
 /// replicated; the absolute value of the packet type is the number of
 /// times the pixel is to be replicated.
 pub const FLI_BRUN: u16 = 15;
+
+/// Magic for a FPS_BRUN chunk - Postage Stamp, Byte Run Length Compression.
+pub const FPS_BRUN: u16 = FLI_BRUN;
 
 /// Decode a FLI_BRUN chunk.
 pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
@@ -77,6 +80,142 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
 
                 x0 = end;
             }
+        }
+    }
+
+    Ok(())
+}
+
+/// Decode a FPS_BRUN chunk.
+pub fn decode_fps_brun(
+        src: &[u8], src_w: usize, src_h: usize, dst: &mut RasterMut)
+        -> FlicResult<()> {
+    if src_w <= 0 || src_h <= 0 {
+        return Err(FlicError::WrongResolution);
+    }
+
+    let mut r = Cursor::new(src);
+    let mut sy = 0;
+
+    for dy in 0..dst.h {
+        let next_y = linscale(src_h, dst.h, dy);
+
+        // Handle case where src_y < dst.h.
+        if next_y < sy && dy > 0 {
+            let split = dst.stride * (dst.y + dy);
+            let (src_row, dst_row) = dst.buf.split_at_mut(split);
+
+            let src_start = dst.stride * (dst.y + dy - 1) + dst.x;
+            let src_end = src_start + dst.w;
+            let dst_start = dst.x;
+            let dst_end = dst_start + dst.w;
+            let src_row = &src_row[src_start..src_end];
+
+            dst_row[dst_start..dst_end].copy_from_slice(src_row);
+            continue;
+        }
+
+        while sy < next_y {
+            try!(decode_fps_brun_skip(&mut r, src_w));
+            sy = sy + 1;
+        }
+
+        let start = dst.stride * (dst.y + dy) + dst.x;
+        let end = start + dst.w;
+        try!(decode_fps_brun_line(&mut r, src_w, dst.w, &mut dst.buf[start..end]));
+        sy = sy + 1;
+    }
+
+    Ok(())
+}
+
+fn decode_fps_brun_skip(
+        r: &mut Cursor<&[u8]>, sw: usize)
+        -> FlicResult<()> {
+    let mut sx = 0;
+
+    // Skip obsolete count byte.
+    let _count = try!(r.read_u8());
+
+    while sx < sw {
+        let signed_length = try!(r.read_i8()) as i32;
+
+        if signed_length >= 0 {
+            let end = sx + signed_length as usize;
+            try!(r.seek(SeekFrom::Current(1)));
+
+            sx = end;
+        } else {
+            let end = sx + (-signed_length) as usize;
+            try!(r.seek(SeekFrom::Current((-signed_length) as i64)));
+
+            sx = end;
+        }
+    }
+
+    Ok(())
+}
+
+fn decode_fps_brun_line(
+        r: &mut Cursor<&[u8]>, sw: usize, dw: usize, dst: &mut [u8])
+        -> FlicResult<()> {
+    let mut buf = [0; (-(::std::i8::MIN as i32)) as usize];
+    let mut sx = 0;
+    let mut dx = 0;
+
+    // Skip obsolete count byte.
+    let _count = try!(r.read_u8());
+
+    while sx < sw {
+        let signed_length = try!(r.read_i8()) as i32;
+
+        // Each iteration processes
+        //
+        //  src[sx .. sx + |signed_length|],
+        //  dst[dx .. dx_end].
+        //
+        // where dx_end is given by:
+        //
+        //  sx + |signed_length| = linscale(sw, dw, dx_end).
+        //
+        // After each iteration, we set:
+        //
+        //  sx' = sx + |signed_length|,
+        //  dx' = dx_end.
+        debug_assert!(dx >= dw || sx <= linscale(sw, dw, dx));
+
+        if signed_length >= 0 {
+            let end = sx + signed_length as usize;
+            let c = try!(r.read_u8());
+
+            // Know src[sx..(sx + signed_length)] = c.
+            while dx < dw {
+                let next_x = linscale(sw, dw, dx);
+                if next_x < end {
+                    dst[dx] = c;
+                    dx = dx + 1;
+                } else {
+                    break;
+                }
+            }
+
+            sx = end;
+        } else {
+            let end = sx + (-signed_length) as usize;
+            try!(r.read_exact(&mut buf[0..(-signed_length) as usize]));
+
+            // Know src[sx..(sx - signed_length)] = buf.
+            while dx < dw {
+                let next_x = linscale(sw, dw, dx);
+                if next_x < end {
+                    dst[dx] = buf[next_x - sx];
+                    dx = dx + 1;
+                } else {
+                    break;
+                }
+            }
+
+            sx = end;
         }
     }
 
@@ -201,7 +340,6 @@ fn write_packet<W: Write>(
     Ok(count)
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -230,6 +368,36 @@ mod tests {
         {
             let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
             let res = decode_fli_brun(&src, &mut dst);
+            assert!(res.is_ok());
+        }
+
+        assert_eq!(&buf[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_decode_fps_brun() {
+        let src = [
+            0x02,   // count 2
+            3,      // length 3
+            0xAB,
+            (-4i8) as u8,   // length -4
+            0x01, 0x23, 0x45, 0x67 ];
+
+        let expected = [
+            0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x01, 0x01, 0x23, 0x23, 0x45, 0x45, 0x67, 0x67,
+            0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x01, 0x01, 0x23, 0x23, 0x45, 0x45, 0x67, 0x67 ];
+
+        const SCREEN_W: usize = 7 * 2;
+        const SCREEN_H: usize = 1 * 2;
+        const NUM_COLS: usize = 256;
+        let mut buf = [0; SCREEN_W * SCREEN_H];
+        let mut pal = [0; 3 * NUM_COLS];
+
+        {
+            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
+            let res = decode_fps_brun(&src, 7, 1, &mut dst);
             assert!(res.is_ok());
         }
 

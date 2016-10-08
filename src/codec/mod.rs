@@ -282,6 +282,18 @@ impl<'a> Iterator for GroupByValue<'a> {
     }
 }
 
+/// A little routine to help with linear scaling functions.
+fn linscale(sw: usize, dw: usize, dx: usize)
+        -> usize {
+    assert!(sw > 0 && dw > 0);
+    assert!(dx < dw);
+
+    match dx {
+        0 => 0,
+        _ => (dx * sw + sw / 2) / dw,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Group,GroupByEq,GroupByRuns};
