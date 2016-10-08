@@ -252,6 +252,22 @@ pub extern "C" fn flicrs_decode_fps_brun(
             src, src_len, dst)
 }
 
+/// Decode a FPS_COPY chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_decode_fps_copy(
+        src: *const u8, src_len: size_t, src_w: size_t, src_h: size_t,
+        dst: *mut CRasterMut)
+        -> c_uint {
+    if src.is_null() || src_w <= 0 || src_h <= 0 || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    run_decoder(file!(), line!(),
+            |src, dst| decode_fps_copy(src, src_w, src_h, dst),
+            src, src_len, dst)
+}
+
 /// Encode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_color64(

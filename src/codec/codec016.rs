@@ -1,7 +1,9 @@
 //! Codec for chunk type 16 = FLI_COPY.
 
 use std::io::Write;
+
 use ::{FlicError,FlicResult,Raster,RasterMut};
+use super::linscale;
 
 /// Magic for a FLI_COPY chunk - No Compression.
 ///
@@ -13,6 +15,9 @@ use ::{FlicError,FlicResult,Raster,RasterMut};
 /// the preferred compression method (SS2 or BRUN) generates more data
 /// than the uncompressed frame image; a relatively rare situation.
 pub const FLI_COPY: u16 = 16;
+
+/// Magic for a FPS_COPY chunk - Postage Stamp, No Compression.
+pub const FPS_COPY: u16 = FLI_COPY;
 
 /// Decode a FLI_COPY chunk.
 pub fn decode_fli_copy(src: &[u8], dst: &mut RasterMut)
@@ -29,6 +34,32 @@ pub fn decode_fli_copy(src: &[u8], dst: &mut RasterMut)
         let start = dst.x;
         let end = start + dst.w;
         dst_row[start..end].copy_from_slice(src_row);
+    }
+
+    Ok(())
+}
+
+/// Decode a FPS_COPY chunk.
+pub fn decode_fps_copy(
+        src: &[u8], src_w: usize, src_h: usize, dst: &mut RasterMut)
+        -> FlicResult<()> {
+    if src_w <= 0 || src_h <= 0 {
+        return Err(FlicError::WrongResolution);
+    }
+
+    for dy in 0..dst.h {
+        let sy = linscale(src_h, dst.h, dy);
+        let src_start = src_w * sy;
+        let src_end = src_start + src_w;
+        let dst_start = dst.stride * dy + dst.x;
+        let dst_end = dst_start + dst.w;
+        let src_row = &src[src_start..src_end];
+        let dst_row = &mut dst.buf[dst_start..dst_end];
+
+        for dx in 0..dst.w {
+            let sx = linscale(src_w, dst.w, dx);
+            dst_row[dx] = src_row[sx];
+        }
     }
 
     Ok(())
