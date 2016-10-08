@@ -268,6 +268,54 @@ pub extern "C" fn flicrs_decode_fps_copy(
             src, src_len, dst)
 }
 
+/// Create the postage stamp's six-cube palette.
+#[no_mangle]
+pub extern "C" fn flicrs_make_pstamp_pal(
+        dst: *mut CRasterMut)
+        -> c_uint {
+    if dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let dst_raster = unsafe{ transmute_raster_mut(dst) };
+    make_pstamp_pal(dst_raster);
+    return 0;
+}
+
+/// Create a translation table to map the palette into the postage
+/// stamp's six-cube palette.
+#[no_mangle]
+pub extern "C" fn flicrs_make_pstamp_xlat256(
+        src: *const u8, src_len: size_t, dst: *mut u8, dst_len: size_t)
+        -> c_uint {
+    if src.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let src_slice = unsafe{ slice::from_raw_parts(src, src_len) };
+    let dst_slice = unsafe{ slice::from_raw_parts_mut(dst, dst_len) };
+    make_pstamp_xlat256(src_slice, dst_slice);
+    return 0;
+}
+
+/// Apply the translation table to the pixels in the raster.
+#[no_mangle]
+pub extern "C" fn flicrs_apply_pstamp_xlat256(
+        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        -> c_uint {
+    if src.is_null() || dst.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let src_slice = unsafe{ slice::from_raw_parts(src, src_len) };
+    let dst_raster = unsafe{ transmute_raster_mut(dst) };
+    apply_pstamp_xlat256(src_slice, dst_raster);
+    return 0;
+}
+
 /// Encode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_color64(

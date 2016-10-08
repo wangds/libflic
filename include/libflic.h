@@ -83,6 +83,20 @@ flicrs_decode_fps_copy(
         struct CRasterMut *dst);
 
 extern unsigned int
+flicrs_make_pstamp_pal(
+        struct CRasterMut *dst);
+
+extern unsigned int
+flicrs_make_pstamp_xlat256(
+        const unsigned char *src, size_t src_len,
+        unsigned char *dst, size_t dst_len);
+
+extern unsigned int
+flicrs_apply_pstamp_xlat256(
+        const unsigned char *src, size_t src_len,
+        struct CRasterMut *dst);
+
+extern unsigned int
 flicrs_encode_fli_color64(
         struct CRaster *opt_prev, struct CRaster *next,
         unsigned char *out_buf, size_t max_len, size_t *out_len);
