@@ -8,6 +8,7 @@ use byteorder::LittleEndian as LE;
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
+use ::pstamp::PostageStamp;
 use codec::*;
 
 /// Magic for a FLI file - Original Animator FLI Files.
@@ -286,6 +287,27 @@ impl FlicFile {
     /// A jiffy is 1/70 of a second.
     pub fn speed_jiffies(&self) -> u16 {
         self.hdr.speed_jiffies
+    }
+
+    /// Decode the postage stamp.
+    pub fn read_postage_stamp<'a>(&mut self, dst: &'a mut RasterMut<'a>)
+            -> FlicResult<()> {
+        let mut pstamp = PostageStamp::new(
+                self.hdr.w as usize, self.hdr.h as usize, dst);
+
+        for chunk in self.frame_hdr[0].chunks.iter() {
+            try!(self.file.seek(SeekFrom::Start(chunk.offset)));
+
+            let mut buf = vec![0; chunk.size as usize];
+            try!(self.file.read_exact(&mut buf));
+
+            let done = try!(pstamp.feed(chunk.magic, &buf));
+            if done {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Decode the next frame in the FLIC.

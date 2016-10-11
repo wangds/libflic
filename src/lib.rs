@@ -36,5 +36,6 @@ pub mod codec;
 pub mod errcode;
 pub mod ffi;
 pub mod flic;
+pub mod pstamp;
 
 mod raster;
