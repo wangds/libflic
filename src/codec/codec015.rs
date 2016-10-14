@@ -226,6 +226,7 @@ fn decode_fps_brun_line(
 pub fn encode_fli_brun<W: Write + Seek>(
         next: &Raster, w: &mut W)
         -> FlicResult<usize> {
+    let max_size = (next.w * next.h) as u64;
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
 
     let start = next.stride * next.y;
@@ -252,9 +253,13 @@ pub fn encode_fli_brun<W: Write + Seek>(
 
         count = try!(write_packet(state, count, n, w));
 
+        let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        if pos2 - pos0 > max_size {
+            return Err(FlicError::ExceededLimit);
+        }
+
         // If count fits, then fill it in.
         if count <= ::std::u8::MAX as usize {
-            let pos2 = try!(w.seek(SeekFrom::Current(0)));
             try!(w.seek(SeekFrom::Start(pos1)));
             try!(w.write_u8(count as u8));
             try!(w.seek(SeekFrom::Start(pos2)));

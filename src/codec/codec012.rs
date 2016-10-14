@@ -133,6 +133,7 @@ pub fn encode_fli_lc<W: Write + Seek>(
     }
 
     // Reserve space for y0, hh.
+    let max_size = (next.w * next.h) as u64;
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
     try!(w.write_u16::<LE>(y0 as u16));
     try!(w.write_u16::<LE>(hh as u16));
@@ -190,6 +191,10 @@ pub fn encode_fli_lc<W: Write + Seek>(
         }
 
         let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        if pos2 - pos0 > max_size {
+            return Err(FlicError::ExceededLimit);
+        }
+
         try!(w.seek(SeekFrom::Start(pos1)));
         try!(w.write_u8((count / 2) as u8));
         try!(w.seek(SeekFrom::Start(pos2)));

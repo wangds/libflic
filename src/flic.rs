@@ -840,54 +840,56 @@ fn write_pixel_data<W: Write + Seek>(
     // Reserve space for chunk.
     try!(w.write_all(&[0; SIZE_OF_CHUNK]));
 
-    let mut chunk: Option<(usize, u16)> = None;
+    let mut chunk_size = next.w * next.h;
+    let mut chunk_magic = FLI_COPY;
 
     // Try FLI_LC.
-    if chunk.is_none() && prev.is_some() {
+    if chunk_magic == FLI_COPY && prev.is_some() {
         match encode_fli_lc(prev.unwrap(), next, w) {
             Ok(size) =>
                 if size == 0 {
                     try!(w.seek(SeekFrom::Start(pos0)));
                     return Ok(0);
-                } else if size < next.w * next.h {
-                    chunk = Some((size, FLI_LC));
+                } else if size < chunk_size {
+                    chunk_size = size;
+                    chunk_magic = FLI_LC;
                 },
 
-            Err(FlicError::ExceededLimit) => {
-                try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
-            },
+            Err(FlicError::ExceededLimit) => (),
+            Err(e) => return Err(e),
+        }
 
-            Err(e) =>
-                return Err(e),
+        if chunk_magic != FLI_LC {
+            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
         }
     }
 
     // Try FLI_BRUN.
-    if chunk.is_none() {
+    if chunk_magic == FLI_COPY {
         match encode_fli_brun(next, w) {
             Ok(size) =>
-                if size < next.w * next.h {
-                    chunk = Some((size, FLI_BRUN));
+                if size < chunk_size {
+                    chunk_size = size;
+                    chunk_magic = FLI_BRUN;
                 },
 
-            Err(FlicError::ExceededLimit) => {
-                try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
-            },
+            Err(FlicError::ExceededLimit) => (),
+            Err(e) => return Err(e),
+        }
 
-            Err(e) =>
-                return Err(e),
+        if chunk_magic != FLI_BRUN {
+            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
         }
     }
 
     // Try FLI_COPY.
-    if chunk.is_none() {
-        let size = try!(encode_fli_copy(next, w));
-        chunk = Some((size, FLI_COPY));
+    if chunk_magic == FLI_COPY {
+        chunk_size = try!(encode_fli_copy(next, w));
+        chunk_magic = FLI_COPY;
     }
 
-    let (size, magic) = chunk.expect("unreachable");
     let pos1 = try!(w.seek(SeekFrom::Current(0)));
-    assert_eq!(SIZE_OF_CHUNK + size, (pos1 - pos0) as usize);
+    assert_eq!(SIZE_OF_CHUNK + chunk_size, (pos1 - pos0) as usize);
 
     try!(w.seek(SeekFrom::Start(pos0)));
     if pos1 - pos0 > ::std::u32::MAX as u64 {
@@ -895,8 +897,39 @@ fn write_pixel_data<W: Write + Seek>(
     }
 
     try!(w.write_u32::<LE>((pos1 - pos0) as u32));
-    try!(w.write_u16::<LE>(magic));
+    try!(w.write_u16::<LE>(chunk_magic));
     try!(w.seek(SeekFrom::Start(pos1)));
 
     Ok((pos1 - pos0) as usize)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor,Seek,SeekFrom};
+    use byteorder::LittleEndian as LE;
+    use byteorder::ReadBytesExt;
+    use ::Raster;
+    use ::codec::FLI_COPY;
+    use super::{SIZE_OF_CHUNK,write_pixel_data};
+
+    /// Test write_pixel_data output when reverting to FLI_COPY.
+    #[test]
+    fn test_write_pixel_data_fli_copy() {
+        const SCREEN_W: usize = 1;
+        const SCREEN_H: usize = 1;
+        const NUM_COLS: usize = 256;
+        let expected_size = SIZE_OF_CHUNK + SCREEN_W * SCREEN_H;
+
+        let buf = [0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * NUM_COLS];
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
+        let mut w = Cursor::new(Vec::new());
+
+        let res = write_pixel_data(None, &next, &mut w);
+        assert_eq!(res.expect("size"), expected_size);
+
+        w.seek(SeekFrom::Start(0)).expect("reset");
+        assert_eq!(w.read_u32::<LE>().expect("size"), expected_size as u32);
+        assert_eq!(w.read_u16::<LE>().expect("magic"), FLI_COPY);
+    }
 }
