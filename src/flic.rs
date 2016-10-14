@@ -428,8 +428,7 @@ impl FlicFileWriter {
             if size > ::std::u32::MAX as u64 {
                 return Err(FlicError::ExceededLimit);
             }
-
-            if self.hdr.frame_count <= 2 {
+            if self.hdr.frame_count < 2 {
                 return Err(FlicError::Corrupted);
             }
 
@@ -476,6 +475,9 @@ impl FlicFileWriter {
             if (next.w != self.hdr.w as usize) || (next.h != self.hdr.h as usize) {
                 return Err(FlicError::WrongResolution);
             }
+            if self.hdr.frame_count == ::std::u16::MAX {
+                return Err(FlicError::ExceededLimit);
+            }
 
             let prev = if self.hdr.frame_count == 0 {
                 None
@@ -484,7 +486,6 @@ impl FlicFileWriter {
             };
 
             try!(write_next_frame(prev, next, &mut file));
-
             self.hdr.frame_count = self.hdr.frame_count + 1;
 
             Ok(())
