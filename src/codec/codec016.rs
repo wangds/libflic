@@ -43,7 +43,7 @@ pub fn decode_fli_copy(src: &[u8], dst: &mut RasterMut)
 pub fn decode_fps_copy(
         src: &[u8], src_w: usize, src_h: usize, dst: &mut RasterMut)
         -> FlicResult<()> {
-    if src_w <= 0 || src_h <= 0 {
+    if src_w <= 0 || src_h <= 0 || (src_w * src_h > src.len()) {
         return Err(FlicError::WrongResolution);
     }
 

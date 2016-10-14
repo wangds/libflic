@@ -421,7 +421,8 @@ impl FlicFileWriter {
     /// frames, including the ring frame, to write out the header.
     ///
     /// The FLIC writer is not usable after being closed.
-    pub fn close(mut self) -> FlicResult<()> {
+    pub fn close(mut self)
+            -> FlicResult<()> {
         if let Some(mut file) = self.file.take() {
             let size = try!(file.seek(SeekFrom::Current(0)));
             if size > ::std::u32::MAX as u64 {
@@ -472,6 +473,16 @@ impl FlicFileWriter {
     pub fn write_next_frame(&mut self, prev: Option<&Raster>, next: &Raster)
             -> FlicResult<()> {
         if let Some(mut file) = self.file.as_ref() {
+            if (next.w != self.hdr.w as usize) || (next.h != self.hdr.h as usize) {
+                return Err(FlicError::WrongResolution);
+            }
+
+            let prev = if self.hdr.frame_count == 0 {
+                None
+            } else {
+                prev
+            };
+
             try!(write_next_frame(prev, next, &mut file));
 
             self.hdr.frame_count = self.hdr.frame_count + 1;
