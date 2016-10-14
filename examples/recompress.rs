@@ -4,8 +4,7 @@ extern crate flic;
 
 use std::env;
 use std::path::{Path,PathBuf};
-use flic::{FlicFile,FlicResult,Raster,RasterMut};
-use flic::flic::FlicFileWriter;
+use flic::{FlicFile,FlicFileWriter,FlicResult,Raster,RasterMut};
 
 fn main() {
     if env::args().count() <= 1 {
@@ -24,7 +23,7 @@ fn main() {
             continue;
         };
 
-        let mut fin = match flic::FlicFile::open(&filepath) {
+        let mut fin = match FlicFile::open(&filepath) {
             Ok(flic) => flic,
             Err(e) => {
                 println!("Error reading {} - {}",
@@ -33,9 +32,9 @@ fn main() {
             },
         };
 
-        let mut fout = match flic::flic::FlicFileWriter::open(
+        let mut fout = match FlicFileWriter::create(
                 outname.as_path(),
-                fin.width(), fin.height(), fin.speed_jiffies()) {
+                fin.width(), fin.height(), fin.speed_msec()) {
             Ok(flic) => flic,
             Err(e) => {
                 println!("Error writing {} - {}",

@@ -101,6 +101,8 @@ pub struct FlicFile {
 #[allow(dead_code)]
 pub struct FlicFileWriter {
     hdr: FlicHeader,
+    offset_frame1: u64,
+    offset_frame2: u64,
 
     filename: PathBuf,
     file: Option<File>,
@@ -377,7 +379,7 @@ impl FlicFile {
 /*--------------------------------------------------------------*/
 
 impl FlicFileWriter {
-    /// Open a file for writing FLICs.
+    /// Open a file for writing Animator Pro FLCs.
     ///
     /// # Examples
     ///
@@ -386,12 +388,50 @@ impl FlicFileWriter {
     ///
     /// const SCREEN_W: u16 = 320;
     /// const SCREEN_H: u16 = 200;
+    /// const speed_msec: u32 = 70;
+    ///
+    /// flic::FlicFileWriter::create(Path::new("ex.flc"), SCREEN_W, SCREEN_H, speed_msec);
+    /// ```
+    pub fn create(filename: &Path, w: u16, h: u16, speed_msec: u32)
+            -> FlicResult<Self> {
+        let mut file = try!(File::create(filename));
+
+        // Reserve space for header.
+        try!(file.write_all(&[0; SIZE_OF_FLIC_HEADER]));
+
+        let jiffy_speed = min((speed_msec as u64) * 70 / 1000, ::std::u16::MAX as u64) as u16;
+
+        let hdr = FlicHeader {
+            magic: FLIHR_MAGIC,
+            size: 0,
+            frame_count: 0,
+            w: w,
+            h: h,
+            speed_msec: speed_msec,
+            speed_jiffies: jiffy_speed,
+        };
+
+        Ok(FlicFileWriter{
+            hdr: hdr,
+            offset_frame1: 0,
+            offset_frame2: 0,
+            filename: filename.to_path_buf(),
+            file: Some(file),
+        })
+    }
+
+    /// Open a file for writing Animator FLIs.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::path::Path;
+    ///
     /// const speed_jiffies: u16 = 5;
     ///
-    /// flic::flic::FlicFileWriter::open(Path::new("ex.fli"), SCREEN_W, SCREEN_H, speed_jiffies);
+    /// flic::FlicFileWriter::create_fli(Path::new("ex.fli"), speed_jiffies);
     /// ```
-    pub fn open(filename: &Path,
-            w: u16, h: u16, speed_jiffies: u16)
+    pub fn create_fli(filename: &Path, speed_jiffies: u16)
             -> FlicResult<Self> {
         let mut file = try!(File::create(filename));
 
@@ -402,14 +442,16 @@ impl FlicFileWriter {
             magic: FLIH_MAGIC,
             size: 0,
             frame_count: 0,
-            w: w,
-            h: h,
+            w: 320,
+            h: 200,
             speed_msec: (speed_jiffies as u32) * 1000 / 70,
             speed_jiffies: speed_jiffies,
         };
 
         Ok(FlicFileWriter{
             hdr: hdr,
+            offset_frame1: 0,
+            offset_frame2: 0,
             filename: filename.to_path_buf(),
             file: Some(file),
         })
@@ -435,7 +477,9 @@ impl FlicFileWriter {
             self.hdr.size = size as u32;
             self.hdr.frame_count = self.hdr.frame_count - 1;
             try!(file.seek(SeekFrom::Start(0)));
-            try!(write_flic_header(&self.hdr, &mut file));
+            try!(write_flic_header(
+                    &self.hdr, self.offset_frame1, self.offset_frame2,
+                    &mut file));
         }
 
         Ok(())
@@ -452,20 +496,24 @@ impl FlicFileWriter {
     ///
     /// ```no_run
     /// use std::path::Path;
-    /// use flic::flic::FlicFileWriter;
     ///
     /// const SCREEN_W: u16 = 320;
     /// const SCREEN_H: u16 = 200;
     /// const NUM_COLS: usize = 256;
-    /// const speed_jiffies: u16 = 5;
+    /// const speed_msec: u32 = 70;
     /// let buf = [0; (SCREEN_W * SCREEN_H) as usize];
     /// let pal = [0; 3 * NUM_COLS];
     ///
-    /// if let Ok(mut flic) = FlicFileWriter::open(
-    ///         Path::new("ex.fli"), SCREEN_W, SCREEN_H, speed_jiffies) {
-    ///     let raster = flic::Raster::new(SCREEN_W as usize, SCREEN_H as usize, &buf, &pal);
-    ///     flic.write_next_frame(None, &raster);
-    ///     flic.write_next_frame(Some(&raster), &raster);
+    /// if let Ok(mut flic) = flic::FlicFileWriter::create(
+    ///         Path::new("ex.flc"), SCREEN_W, SCREEN_H, speed_msec) {
+    ///     let raster1 = flic::Raster::new(SCREEN_W as usize, SCREEN_H as usize, &buf, &pal);
+    ///     let raster2 = flic::Raster::new(SCREEN_W as usize, SCREEN_H as usize, &buf, &pal);
+    ///     // Write first frame.
+    ///     flic.write_next_frame(None, &raster1);
+    ///     // Write subsequent frames.
+    ///     flic.write_next_frame(Some(&raster1), &raster2);
+    ///     // Write ring frame.
+    ///     flic.write_next_frame(Some(&raster2), &raster1);
     ///     flic.close();
     /// }
     /// ```
@@ -479,13 +527,19 @@ impl FlicFileWriter {
                 return Err(FlicError::ExceededLimit);
             }
 
+            if self.hdr.frame_count == 0 {
+                self.offset_frame1 = try!(file.seek(SeekFrom::Current(0)));
+            } else if self.hdr.frame_count == 1 {
+                self.offset_frame2 = try!(file.seek(SeekFrom::Current(0)));
+            }
+
             let prev = if self.hdr.frame_count == 0 {
                 None
             } else {
                 prev
             };
 
-            try!(write_next_frame(prev, next, &mut file));
+            try!(write_next_frame(self.hdr.magic, prev, next, &mut file));
             self.hdr.frame_count = self.hdr.frame_count + 1;
 
             Ok(())
@@ -754,6 +808,16 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
 
 /// Write the FLIC header.
 fn write_flic_header<W: Write + Seek>(
+        hdr: &FlicHeader, offset_frame1: u64, offset_frame2: u64, w: &mut W)
+        -> FlicResult<()> {
+    match hdr.magic {
+        FLIH_MAGIC => write_fli_header(hdr, w),
+        FLIHR_MAGIC => write_flc_header(hdr, offset_frame1, offset_frame2, w),
+        _ => return Err(FlicError::BadMagic),
+    }
+}
+
+fn write_fli_header<W: Write + Seek>(
         hdr: &FlicHeader, w: &mut W)
         -> FlicResult<()> {
     let depth = 8;
@@ -769,17 +833,43 @@ fn write_flic_header<W: Write + Seek>(
     Ok(())
 }
 
+fn write_flc_header<W: Write + Seek>(
+        hdr: &FlicHeader, offset_frame1: u64, offset_frame2: u64, w: &mut W)
+        -> FlicResult<()> {
+    let depth = 8;
+    let flags = 3;
+
+    try!(w.write_u32::<LE>(hdr.size));
+    try!(w.write_u16::<LE>(FLIHR_MAGIC));
+    try!(w.write_u16::<LE>(hdr.frame_count));
+    try!(w.write_u16::<LE>(hdr.w));
+    try!(w.write_u16::<LE>(hdr.h));
+    try!(w.write_u16::<LE>(depth));
+    try!(w.write_u16::<LE>(flags));
+    try!(w.write_u32::<LE>(hdr.speed_msec));
+    try!(w.seek(SeekFrom::Current(60)));
+
+    // If the offsets are too big, then leave them as 0 and hope other
+    // libraries will compute it themselves.
+    if offset_frame1 < offset_frame2 && offset_frame2 <= ::std::u32::MAX as u64 {
+        try!(w.write_u32::<LE>(offset_frame1 as u32));
+        try!(w.write_u32::<LE>(offset_frame2 as u32));
+    }
+
+    Ok(())
+}
+
 /// Write the next frame.
 fn write_next_frame<W: Write + Seek>(
-        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
 
     // Reserve space for chunk.
     try!(w.write_all(&[0; SIZE_OF_FLIC_FRAME]));
 
-    let size1 = try!(write_color_data(prev, next, w));
-    let size2 = try!(write_pixel_data(prev, next, w));
+    let size1 = try!(write_color_data(flic_magic, prev, next, w));
+    let size2 = try!(write_pixel_data(flic_magic, prev, next, w));
     let size = SIZE_OF_FLIC_FRAME + size1 + size2;
 
     if size > ::std::u32::MAX as usize {
@@ -806,26 +896,34 @@ fn write_next_frame<W: Write + Seek>(
 
 /// Write the next frame's palette.
 fn write_color_data<W: Write + Seek>(
-        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
 
     // Reserve space for chunk.
     try!(w.write_all(&[0; SIZE_OF_CHUNK]));
 
-    let size = try!(encode_fli_color64(prev, next, w));
-    if SIZE_OF_CHUNK + size > ::std::u32::MAX as usize {
+    let (chunk_size, chunk_magic) =
+        if flic_magic == FLIH_MAGIC {
+            let size = try!(encode_fli_color64(prev, next, w));
+            (size, FLI_COLOR64)
+        } else {
+            let size = try!(encode_fli_color256(prev, next, w));
+            (size, FLI_COLOR256)
+        };
+
+    if SIZE_OF_CHUNK + chunk_size > ::std::u32::MAX as usize {
         return Err(FlicError::ExceededLimit);
     }
 
     let pos1 = try!(w.seek(SeekFrom::Current(0)));
 
     try!(w.seek(SeekFrom::Start(pos0)));
-    if size > 0 {
-        try!(w.write_u32::<LE>((SIZE_OF_CHUNK + size) as u32));
-        try!(w.write_u16::<LE>(FLI_COLOR64));
+    if chunk_size > 0 {
+        try!(w.write_u32::<LE>((SIZE_OF_CHUNK + chunk_size) as u32));
+        try!(w.write_u16::<LE>(chunk_magic));
         try!(w.seek(SeekFrom::Start(pos1)));
-        Ok(SIZE_OF_CHUNK + size)
+        Ok(SIZE_OF_CHUNK + chunk_size)
     } else {
         Ok(0)
     }
@@ -833,7 +931,7 @@ fn write_color_data<W: Write + Seek>(
 
 /// Write the next frame's pixels.
 fn write_pixel_data<W: Write + Seek>(
-        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
 
@@ -842,6 +940,14 @@ fn write_pixel_data<W: Write + Seek>(
 
     let mut chunk_size = next.w * next.h;
     let mut chunk_magic = FLI_COPY;
+
+    // Try FLI_BLACK for first frame only.
+    if chunk_magic == FLI_COPY && prev.is_none() {
+        if can_encode_fli_black(next) {
+            chunk_size = 0;
+            chunk_magic = FLI_BLACK;
+        }
+    }
 
     // Try FLI_LC.
     if chunk_magic == FLI_COPY && prev.is_some() {
@@ -860,6 +966,24 @@ fn write_pixel_data<W: Write + Seek>(
         }
 
         if chunk_magic != FLI_LC {
+            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+        }
+    }
+
+    // Try FLI_SS2, which has higher limits.
+    if flic_magic == FLIHR_MAGIC && chunk_magic == FLI_COPY && prev.is_some() {
+        match encode_fli_ss2(prev.unwrap(), next, w) {
+            Ok(size) =>
+                if size < chunk_size {
+                    chunk_size = size;
+                    chunk_magic = FLI_SS2;
+                },
+
+            Err(FlicError::ExceededLimit) => {},
+            Err(e) => return Err(e),
+        }
+
+        if chunk_magic != FLI_SS2 {
             try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
         }
     }
@@ -910,7 +1034,7 @@ mod tests {
     use byteorder::ReadBytesExt;
     use ::Raster;
     use ::codec::FLI_COPY;
-    use super::{SIZE_OF_CHUNK,write_pixel_data};
+    use super::{FLIH_MAGIC,SIZE_OF_CHUNK,write_pixel_data};
 
     /// Test write_pixel_data output when reverting to FLI_COPY.
     #[test]
@@ -920,12 +1044,12 @@ mod tests {
         const NUM_COLS: usize = 256;
         let expected_size = SIZE_OF_CHUNK + SCREEN_W * SCREEN_H;
 
-        let buf = [0; SCREEN_W * SCREEN_H];
+        let buf = [0xFF; SCREEN_W * SCREEN_H];
         let pal = [0; 3 * NUM_COLS];
         let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
         let mut w = Cursor::new(Vec::new());
 
-        let res = write_pixel_data(None, &next, &mut w);
+        let res = write_pixel_data(FLIH_MAGIC, None, &next, &mut w);
         assert_eq!(res.expect("size"), expected_size);
 
         w.seek(SeekFrom::Start(0)).expect("reset");

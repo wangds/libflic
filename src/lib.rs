@@ -7,6 +7,7 @@ extern crate libc;
 pub use errcode::FlicError;
 pub use errcode::FlicResult;
 pub use flic::FlicFile;
+pub use flic::FlicFileWriter;
 
 /// Raster structure.
 #[allow(dead_code)]
