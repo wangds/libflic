@@ -1,6 +1,6 @@
 //! Codec for chunk type 13 = FLI_BLACK.
 
-use ::RasterMut;
+use ::{Raster,RasterMut};
 
 /// Magic for a FLI_BLACK chunk - No Data.
 ///
@@ -19,4 +19,12 @@ pub fn decode_fli_black(dst: &mut RasterMut) {
             *e = 0;
         }
     }
+}
+
+/// True if the frame can be encoded by FLI_BLACK.
+pub fn can_encode_fli_black(next: &Raster) -> bool {
+    let start = next.stride * next.y;
+    let end = next.stride * (next.y + next.h);
+    next.buf[start..end].chunks(next.stride)
+            .all(|row| row.iter().all(|&e| e == 0))
 }
