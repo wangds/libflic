@@ -60,9 +60,11 @@ struct GroupByRuns<'a> {
     idx: usize,
     prepend_same_run: bool,
     ignore_final_same_run: bool,
+    group_by_lc: bool,
 }
 
 type GroupByLC<'a> = GroupByRuns<'a>;
+type GroupBySS2<'a> = GroupByRuns<'a>;
 
 /// An iterator that groups the buffer into packets of the same value.
 ///
@@ -193,6 +195,21 @@ impl<'a> GroupByRuns<'a> {
             idx: 0,
             prepend_same_run: false,
             ignore_final_same_run: false,
+            group_by_lc: true,
+        }
+    }
+
+    /// Create a new GroupBySS2 iterator.
+    #[allow(dead_code)]
+    fn new_ss2(old: &'a [u8], new: &'a [u8]) -> Self {
+        assert_eq!(old.len(), new.len());
+        GroupBySS2 {
+            old: old,
+            new: new,
+            idx: 0,
+            prepend_same_run: false,
+            ignore_final_same_run: false,
+            group_by_lc: false,
         }
     }
 
@@ -237,10 +254,34 @@ impl<'a> Iterator for GroupByRuns<'a> {
             } else {
                 return Some(Group::Same(start, n));
             }
-        } else {
+        }
+
+        // GroupByLC.
+        if self.group_by_lc {
             let c = self.new[self.idx];
             while (i < len) && (self.old[i] != self.new[i]) && (self.new[i] == c) {
                 i = i + 1;
+            }
+
+            let n = i - self.idx;
+            self.idx = i;
+            return Some(Group::Diff(start, n));
+        }
+
+        // GroupBySS2.
+        if i + 1 >= len {
+            self.idx = i + 1;
+            return Some(Group::Diff(start, 1));
+        } else {
+            let c0 = self.new[self.idx + 0];
+            let c1 = self.new[self.idx + 1];
+            while i + 1 < len {
+                if (self.old[i + 0] != self.new[i + 0] || self.old[i + 1] != self.new[i + 1])
+                        && (self.new[i + 0] == c0 && self.new[i + 1] == c1) {
+                    i = i + 2;
+                } else {
+                    break;
+                }
             }
 
             let n = i - self.idx;
@@ -298,7 +339,7 @@ fn linscale(sw: usize, dw: usize, dx: usize)
 
 #[cfg(test)]
 mod tests {
-    use super::{Group,GroupByEq,GroupByLC};
+    use super::{Group,GroupByEq,GroupByLC,GroupBySS2};
 
     #[test]
     fn test_group_by_eq() {
@@ -328,6 +369,24 @@ mod tests {
 
         let gs: Vec<Group>
             = GroupByLC::new_lc(&xs, &ys)
+            .set_prepend_same_run()
+            .set_ignore_final_same_run()
+            .collect();
+
+        assert_eq!(&gs[..], expected);
+    }
+
+    #[test]
+    fn test_group_by_ss2() {
+        let xs = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ];
+        let ys = [ 2, 2, 3, 4, 5, 0, 1, 0, 1,  0 ];
+        //         ^^^^  ^^^^^^^  ^^^^^^^^^^  ^^
+        let expected = [
+            Group::Same(0, 0), // prepend
+            Group::Diff(0, 2), Group::Same(2, 3), Group::Diff(5, 4), Group::Diff(9, 1) ];
+
+        let gs: Vec<Group>
+            = GroupBySS2::new_ss2(&xs, &ys)
             .set_prepend_same_run()
             .set_ignore_final_same_run()
             .collect();
