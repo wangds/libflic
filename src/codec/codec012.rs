@@ -5,7 +5,7 @@ use byteorder::LittleEndian as LE;
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
-use super::{Group,GroupByRuns};
+use super::{Group,GroupByLC};
 
 /// Magic for a FLI_LC chunk - Byte Aligned Delta Compression.
 ///
@@ -155,7 +155,7 @@ pub fn encode_fli_lc<W: Write + Seek>(
         let mut state = LcOp::Skip(0);
         let mut count = 0;
 
-        for g in GroupByRuns::new(p, n)
+        for g in GroupByLC::new_lc(p, n)
                 .set_prepend_same_run()
                 .set_ignore_final_same_run() {
             if let Some(new_state) = combine_packets(state, g) {
@@ -260,7 +260,6 @@ fn combine_packets(s0: LcOp, s1: Group)
         // 2. Memcpy: length + data (a)
         //    Memcpy: data (b)
         //    Memcpy: data
-        //
         (LcOp::Memcpy(idx, a), Group::Diff(_, b)) =>
             if b < 5 {
                 return Some(LcOp::Memcpy(idx, a + b));

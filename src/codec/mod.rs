@@ -62,6 +62,8 @@ struct GroupByRuns<'a> {
     ignore_final_same_run: bool,
 }
 
+type GroupByLC<'a> = GroupByRuns<'a>;
+
 /// An iterator that groups the buffer into packets of the same value.
 ///
 /// This is suitable for compressing memset/memcpy type codecs,
@@ -182,10 +184,10 @@ impl<I: Iterator> Iterator for GroupByEq<I>
 }
 
 impl<'a> GroupByRuns<'a> {
-    /// Create a new GroupByRuns iterator.
-    pub fn new(old: &'a [u8], new: &'a [u8]) -> Self {
+    /// Create a new GroupByLC iterator.
+    fn new_lc(old: &'a [u8], new: &'a [u8]) -> Self {
         assert_eq!(old.len(), new.len());
-        GroupByRuns {
+        GroupByLC {
             old: old,
             new: new,
             idx: 0,
@@ -296,7 +298,7 @@ fn linscale(sw: usize, dw: usize, dx: usize)
 
 #[cfg(test)]
 mod tests {
-    use super::{Group,GroupByEq,GroupByRuns};
+    use super::{Group,GroupByEq,GroupByLC};
 
     #[test]
     fn test_group_by_eq() {
@@ -316,15 +318,16 @@ mod tests {
     }
 
     #[test]
-    fn test_group_by_runs() {
+    fn test_group_by_lc() {
         let xs = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
         let ys = [ 2, 1, 3, 4, 5, 0, 0, 0, 9 ];
+        //         ^  ^  ^^^^^^^  ^^^^^^^  ^
         let expected = [
             Group::Same(0, 0), // prepend
             Group::Diff(0, 1), Group::Diff(1, 1), Group::Same(2, 3), Group::Diff(5, 3) ];
 
         let gs: Vec<Group>
-            = GroupByRuns::new(&xs, &ys)
+            = GroupByLC::new_lc(&xs, &ys)
             .set_prepend_same_run()
             .set_ignore_final_same_run()
             .collect();
