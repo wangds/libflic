@@ -338,6 +338,24 @@ pub extern "C" fn flicrs_encode_fli_color256(
             out_buf, max_len, out_len)
 }
 
+/// Encode a FLI_SS2 chunk.
+#[no_mangle]
+pub extern "C" fn flicrs_encode_fli_ss2(
+        prev: *const CRaster, next: *const CRaster,
+        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        -> c_uint {
+    if prev.is_null() || next.is_null() || out_buf.is_null() || out_len.is_null() {
+        printerrorln!("bad input parameters");
+        return 1;
+    }
+
+    let prev_raster = unsafe{ transmute_raster(prev) };
+    let next_raster = unsafe{ transmute_raster(next) };
+    run_encoder(file!(), line!(),
+            |w| encode_fli_ss2(prev_raster, next_raster, w),
+            out_buf, max_len, out_len)
+}
+
 /// Encode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_color64(

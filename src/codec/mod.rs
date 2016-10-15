@@ -200,7 +200,6 @@ impl<'a> GroupByRuns<'a> {
     }
 
     /// Create a new GroupBySS2 iterator.
-    #[allow(dead_code)]
     fn new_ss2(old: &'a [u8], new: &'a [u8]) -> Self {
         assert_eq!(old.len(), new.len());
         GroupBySS2 {
