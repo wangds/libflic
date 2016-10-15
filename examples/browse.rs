@@ -14,8 +14,8 @@ const SCREEN_W: u32 = 640;
 const SCREEN_H: u32 = 400;
 const MIN_SCREEN_W: u32 = 320;
 const MIN_SCREEN_H: u32 = 200;
-const MAX_PSTAMP_W: u32 = 98;
-const MAX_PSTAMP_H: u32 = 61;
+const MAX_PSTAMP_W: u16 = 98;
+const MAX_PSTAMP_H: u16 = 61;
 
 fn main() {
     let dirname = env::args().nth(1);
@@ -89,9 +89,8 @@ fn main() {
                 },
             };
 
-            let (pstamp_w, pstamp_h) = get_postage_stamp_size(
-                    MAX_PSTAMP_W, MAX_PSTAMP_H,
-                    flic.width() as u32, flic.height() as u32);
+            let (pstamp_w, pstamp_h) = flic::pstamp::get_pstamp_size(
+                    MAX_PSTAMP_W, MAX_PSTAMP_H, flic.width(), flic.height());
 
             let gridx = count % 6;
             let gridy = count / 6;
@@ -146,34 +145,12 @@ fn usage() {
     println!("Usage: browse <directory containing FLIC files>");
 }
 
-fn get_postage_stamp_size(
-        max_w: u32, max_h: u32, w: u32, h: u32)
-        -> (u32, u32) {
-    assert!(w > 0 && h > 0);
-
-    let mut scale_w;
-    let mut scale_h;
-
-    if w * max_h / h > max_w {
-        scale_w = max_w;
-        scale_h = h * max_w / w;
-    } else {
-        scale_w = w * max_h / h;
-        scale_h = max_h;
-    }
-
-    if scale_w <= 0 {
-        scale_w = 1;
-    }
-    if scale_h <= 0 {
-        scale_h = 1;
-    }
-
-    (scale_w, scale_h)
-}
-
 fn draw_rect(
-        buf: &mut [u8], x: u32, y: u32, w: u32, h: u32) {
+        buf: &mut [u8], x: u16, y: u16, w: u16, h: u16) {
+    let x = x as u32;
+    let y = y as u32;
+    let w = w as u32;
+    let h = h as u32;
     let stride = SCREEN_W;
     let c = 0xFF;
 

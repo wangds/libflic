@@ -1,10 +1,10 @@
 //! FLIC postage stamp implementation.
 
-use std::io::Cursor;
+use std::io::{Cursor,Seek,SeekFrom,Write};
 use byteorder::LittleEndian as LE;
-use byteorder::ReadBytesExt;
+use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicError,FlicResult,RasterMut};
+use ::{FlicError,FlicResult,Raster,RasterMut};
 use codec::*;
 
 /// FLIC postage stamp creator.
@@ -127,6 +127,35 @@ impl<'a> PostageStamp<'a> {
 
 /*--------------------------------------------------------------*/
 
+/// Get the postage stamp size.
+pub fn get_pstamp_size(
+        max_w: u16, max_h: u16, w: u16, h: u16)
+        -> (u16, u16) {
+    if max_w <= 0 || max_h <= 0 || w <= 0 || h <= 0 {
+        return (0, 0);
+    }
+
+    let mut scaled_w;
+    let mut scaled_h;
+
+    if (w as u32) * (max_h as u32) / (h as u32) > (max_w as u32) {
+        scaled_w = max_w;
+        scaled_h = ((h as u32) * (max_w as u32) / (w as u32)) as u16;
+    } else {
+        scaled_w = ((w as u32) * (max_h as u32) / (h as u32)) as u16;
+        scaled_h = max_h;
+    }
+
+    if scaled_w <= 0 {
+        scaled_w = 1;
+    }
+    if scaled_h <= 0 {
+        scaled_h = 1;
+    }
+
+    (scaled_w, scaled_h)
+}
+
 /// Decode a FLI_PSTAMP chunk.
 ///
 /// Returns true if the postage stamp has been created.
@@ -174,4 +203,89 @@ fn decode_fli_pstamp(
             },
         _ => return Err(FlicError::BadMagic),
     }
+}
+
+/// Write the postage stamp chunk.
+pub fn write_pstamp_data<W: Write + Seek>(
+        next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    const SIZE_OF_CHUNK_ID: usize = 6;
+    const SIZE_OF_SUB_CHUNK: usize = SIZE_OF_CHUNK_ID;
+    const SIZE_OF_FULL_CHUNK: usize = SIZE_OF_CHUNK_ID + 6 + SIZE_OF_SUB_CHUNK;
+
+    if next.w > ::std::u16::MAX as usize || next.h > ::std::u16::MAX as usize {
+        // We can still write a postage stamp for huge images, but
+        // get_pstamp_size() is not smart enough right now.
+        return Err(FlicError::ExceededLimit);
+    }
+
+    let (pstamp_w, pstamp_h) = get_pstamp_size(
+            STANDARD_PSTAMP_W, STANDARD_PSTAMP_H, next.w as u16, next.h as u16);
+
+    if pstamp_w <= 0 || pstamp_h <= 0 || can_encode_fli_black(next) {
+        return Ok(0);
+    }
+
+    let mut chunk_size = ((pstamp_w as u32) * (pstamp_h as u32)) as usize;
+    let mut chunk_magic = FPS_COPY;
+
+    // Reserve space for chunk.
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    try!(w.write_all(&[0; SIZE_OF_FULL_CHUNK]));
+    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+
+    let mut xlat256 = [0; 256];
+    make_pstamp_xlat256(&next.pal, &mut xlat256);
+
+    // FPS_XLAT256
+    if chunk_magic == FPS_COPY && (next.w * next.h < chunk_size as usize) {
+        chunk_size = 256;
+        chunk_magic = FPS_XLAT256;
+
+        try!(w.write_all(&xlat256[..]));
+    }
+
+    // FPS_BRUN/FPS_COPY.
+    if chunk_magic == FPS_COPY {
+        let pstamp_buf = prepare_pstamp(
+                next, &xlat256, pstamp_w as usize, pstamp_h as usize);
+        let pstamp = Raster::new(
+                pstamp_w as usize, pstamp_h as usize, &pstamp_buf, &next.pal);
+
+        match encode_fli_brun(&pstamp, w) {
+            Ok(size) =>
+                if size < chunk_size {
+                    chunk_size = size;
+                    chunk_magic = FLI_BRUN;
+                },
+
+            Err(FlicError::ExceededLimit) => (),
+            Err(e) => return Err(e),
+        }
+
+        if chunk_magic == FPS_COPY {
+            try!(w.seek(SeekFrom::Start(pos1)));
+            chunk_size = try!(encode_fli_copy(&pstamp, w));
+            chunk_magic = FPS_COPY;
+        }
+    }
+
+    let pos2 = try!(w.seek(SeekFrom::Current(0)));
+    assert_eq!(SIZE_OF_FULL_CHUNK + chunk_size, (pos2 - pos0) as usize);
+
+    try!(w.seek(SeekFrom::Start(pos0)));
+    if pos2 - pos0 > ::std::u32::MAX as u64 {
+        return Err(FlicError::ExceededLimit);
+    }
+
+    try!(w.write_u32::<LE>((SIZE_OF_FULL_CHUNK + chunk_size) as u32));
+    try!(w.write_u16::<LE>(FLI_PSTAMP));
+    try!(w.write_u16::<LE>(pstamp_h));
+    try!(w.write_u16::<LE>(pstamp_w));
+    try!(w.write_u16::<LE>(PSTAMP_SIXCUBE));
+    try!(w.write_u32::<LE>((SIZE_OF_SUB_CHUNK + chunk_size) as u32));
+    try!(w.write_u16::<LE>(chunk_magic));
+    try!(w.seek(SeekFrom::Start(pos2)));
+
+    Ok((pos2 - pos0) as usize)
 }

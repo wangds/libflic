@@ -8,7 +8,7 @@ use byteorder::LittleEndian as LE;
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
-use ::pstamp::PostageStamp;
+use ::pstamp::{PostageStamp,write_pstamp_data};
 use codec::*;
 
 /// Magic for a FLI file - Original Animator FLI Files.
@@ -539,7 +539,8 @@ impl FlicFileWriter {
                 prev
             };
 
-            try!(write_next_frame(self.hdr.magic, prev, next, &mut file));
+            try!(write_next_frame(self.hdr.magic, self.hdr.frame_count,
+                    prev, next, &mut file));
             self.hdr.frame_count = self.hdr.frame_count + 1;
 
             Ok(())
@@ -861,16 +862,30 @@ fn write_flc_header<W: Write + Seek>(
 
 /// Write the next frame.
 fn write_next_frame<W: Write + Seek>(
-        flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
+        flic_magic: u16, frame_count: u16,
+        prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
     let pos0 = try!(w.seek(SeekFrom::Current(0)));
 
     // Reserve space for chunk.
     try!(w.write_all(&[0; SIZE_OF_FLIC_FRAME]));
 
-    let size1 = try!(write_color_data(flic_magic, prev, next, w));
-    let size2 = try!(write_pixel_data(flic_magic, prev, next, w));
-    let size = SIZE_OF_FLIC_FRAME + size1 + size2;
+    let size_pstamp =
+        if flic_magic != FLIH_MAGIC && frame_count == 0 {
+            match write_pstamp_data(next, w) {
+                Ok(size) => size,
+                Err(_) => {
+                    try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_FLIC_FRAME as u64)));
+                    0
+                },
+            }
+        } else {
+            0
+        };
+
+    let size_col = try!(write_color_data(flic_magic, prev, next, w));
+    let size_pix = try!(write_pixel_data(flic_magic, prev, next, w));
+    let size = SIZE_OF_FLIC_FRAME + size_pstamp + size_col + size_pix;
 
     if size > ::std::u32::MAX as usize {
         return Err(FlicError::ExceededLimit);
@@ -881,9 +896,11 @@ fn write_next_frame<W: Write + Seek>(
     try!(w.seek(SeekFrom::Start(pos0)));
     if size > 0 {
         let num_chunks
-            = if size1 > 0 { 1 } else { 0 }
-            + if size2 > 0 { 1 } else { 0 };
+            = if size_pstamp > 0 { 1 } else { 0 }
+            + if size_col > 0 { 1 } else { 0 }
+            + if size_pix > 0 { 1 } else { 0 };
 
+        assert_eq!(size, (pos1 - pos0) as usize);
         try!(w.write_u32::<LE>(size as u32));
         try!(w.write_u16::<LE>(FCID_FRAME));
         try!(w.write_u16::<LE>(num_chunks));

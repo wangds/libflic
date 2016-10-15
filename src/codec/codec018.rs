@@ -1,6 +1,7 @@
 //! Codec for chunk type 18 = FLI_PSTAMP.
 
-use ::RasterMut;
+use ::{Raster,RasterMut};
+use super::linscale;
 
 /// Magic for a FLI_PSTAMP chunk - Postage Stamp Image.
 ///
@@ -74,6 +75,15 @@ pub const FLI_PSTAMP: u16 = 18;
 /// Magic for a FPS_XLAT256 chunk - Postage Stamp, Six-Cube Color Translation Table.
 pub const FPS_XLAT256: u16 = FLI_PSTAMP;
 
+/// Magic for the six-cube color translation type.
+pub const PSTAMP_SIXCUBE: u16 = 1;
+
+/// Stardard postage stamp width.
+pub const STANDARD_PSTAMP_W: u16 = 100;
+
+/// Stardard postage stamp height.
+pub const STANDARD_PSTAMP_H: u16 = 63;
+
 /// Create the postage stamp's six-cube palette.
 pub fn make_pstamp_pal(dst: &mut RasterMut) {
     assert!(dst.pal.len() >= 6 * 6 * 6);
@@ -122,6 +132,34 @@ pub fn apply_pstamp_xlat256(xlat256: &[u8], dst: &mut RasterMut) {
             *e = xlat256[*e as usize];
         }
     }
+}
+
+/// Create a new scaled down image, remapped into the six-color
+/// palette.  The image may be encoded as part of a postage stamp
+/// chunk using the FLI_BRUN and FLI_COPY encoders.
+pub fn prepare_pstamp(
+        src: &Raster, xlat256: &[u8], dst_w: usize, dst_h: usize)
+        -> Vec<u8> {
+    assert!(xlat256.len() >= ::std::u8::MAX as usize);
+
+    let mut pstamp = Vec::with_capacity(dst_w * dst_h);
+
+    for dy in 0..dst_h {
+        let sy = linscale(src.h, dst_h, dy);
+        let src_start = src.stride * (src.y + sy) + src.x;
+        let src_end = src_start + src.w;
+        let dst_start = dst_w * dy;
+        let dst_end = dst_start + dst_w;
+        let src_row = &src.buf[src_start..src_end];
+        let dst_row = &mut pstamp[dst_start..dst_end];
+
+        for dx in 0..dst_w {
+            let sx = linscale(src.w, dst_w, dx);
+            dst_row[dx] = xlat256[src_row[sx] as usize];
+        }
+    }
+
+    pstamp
 }
 
 #[cfg(test)]
