@@ -1,10 +1,11 @@
 //! Codec for chunk type 4 = FLI_COLOR256.
 
-use std::io::{Cursor,Read};
+use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use byteorder::LittleEndian as LE;
-use byteorder::ReadBytesExt;
+use byteorder::{ReadBytesExt,WriteBytesExt};
 
-use ::{FlicError,FlicResult,RasterMut};
+use ::{FlicError,FlicResult,Raster,RasterMut};
+use super::{Group,GroupByEq};
 
 /// Magic for a FLI_COLOR256 chunk - 256-Level Color.
 ///
@@ -60,9 +61,96 @@ pub fn decode_fli_color256(src: &[u8], dst: &mut RasterMut)
     Ok(())
 }
 
+/// Encode a FLI_COLOR256 chunk.
+pub fn encode_fli_color256<W: Write + Seek>(
+        prev: Option<&Raster>, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    match prev {
+        Some(prev) => encode_fli_color256_delta(prev, next, w),
+        None => encode_fli_color256_full(next, w),
+    }
+}
+
+fn encode_fli_color256_full<W: Write + Seek>(
+        next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    if next.pal.len() % 3 != 0 || next.pal.len() > 3 * 256 {
+        return Err(FlicError::BadInput);
+    }
+
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+
+    let count = 1;
+    let nskip = 0;
+    let ncopy = (next.pal.len() / 3) as u8;
+    try!(w.write_u16::<LE>(count));
+    try!(w.write_u8(nskip));
+    try!(w.write_u8(ncopy));
+    try!(w.write_all(&next.pal[..]));
+
+    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    Ok((pos1 - pos0) as usize)
+}
+
+fn encode_fli_color256_delta<W: Write + Seek>(
+        prev: &Raster, next: &Raster, w: &mut W)
+        -> FlicResult<usize> {
+    if prev.pal.len() != next.pal.len()
+            || prev.pal.len() % 3 != 0
+            || next.pal.len() % 3 != 0 {
+        return Err(FlicError::BadInput);
+    }
+
+    // Reserve space for count.
+    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    try!(w.write_u16::<LE>(0));
+
+    let mut count = 0;
+
+    for g in GroupByEq::new(prev.pal.chunks(3), next.pal.chunks(3))
+            .set_prepend_same_run()
+            .set_ignore_final_same_run() {
+        match g {
+            Group::Same(_, nskip) => {
+                assert!(nskip <= ::std::u8::MAX as usize);
+                try!(w.write_u8(nskip as u8));
+            },
+            Group::Diff(idx, ncopy) => {
+                let start = 3 * idx;
+                let end = start + 3 * ncopy;
+                assert!(ncopy <= ::std::u8::MAX as usize + 1);
+                try!(w.write_u8(ncopy as u8));
+                try!(w.write_all(&next.pal[start..end]));
+            },
+        }
+
+        count = count + 1;
+    }
+
+    // If odd number, pad it to be even.
+    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    if (pos1 - pos0) % 2 == 1 {
+        try!(w.write_u8(0));
+        pos1 = pos1 + 1;
+    }
+
+    try!(w.seek(SeekFrom::Start(pos0)));
+    if count > 0 {
+        assert!(count % 2 == 0);
+        assert!(count / 2 <= ::std::u16::MAX as usize);
+        try!(w.write_u16::<LE>((count / 2) as u16));
+        try!(w.seek(SeekFrom::Start(pos1)));
+
+        Ok((pos1 - pos0) as usize)
+    } else {
+        Ok(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use ::RasterMut;
+    use std::io::Cursor;
+    use ::{Raster,RasterMut};
     use super::*;
 
     #[test]
@@ -91,5 +179,38 @@ mod tests {
                 &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
         assert!(res.is_ok());
         assert_eq!(&pal[0..33], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_color256() {
+        let src = [
+            0x0A, 0x0B, 0x0C, 0x1A, 0x1B, 0x1C,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x2A, 0x2B, 0x2C, 0x3A, 0x3B, 0x3C, 0x4A, 0x4B, 0x4C,
+            0x00, 0x00, 0x00 ];
+
+        let expected = [
+            0x02, 0x00, // count 2
+            0, 2,       // skip 0, copy 2
+            0x0A, 0x0B, 0x0C, 0x1A, 0x1B, 0x1C,
+            3, 3,       // skip 3, copy 3
+            0x2A, 0x2B, 0x2C, 0x3A, 0x3B, 0x3C, 0x4A, 0x4B, 0x4C,
+            0x00 ];     // even
+
+        const SCREEN_W: usize = 320;
+        const SCREEN_H: usize = 200;
+        const NUM_COLS: usize = 256;
+        let buf: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
+        let pal1: Vec<u8> = vec![0; 3 * NUM_COLS];
+        let mut pal2: Vec<u8> = vec![0; 3 * NUM_COLS];
+        pal2[0..27].copy_from_slice(&src[..]);
+
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let prev = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal1);
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal2);
+        let res = encode_fli_color256(Some(&prev), &next, &mut enc);
+        assert!(res.is_ok());
+        assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }

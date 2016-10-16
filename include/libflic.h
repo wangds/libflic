@@ -97,6 +97,11 @@ flicrs_apply_pstamp_xlat256(
         struct CRasterMut *dst);
 
 extern unsigned int
+flicrs_encode_fli_color256(
+        struct CRaster *opt_prev, struct CRaster *next,
+        unsigned char *out_buf, size_t max_len, size_t *out_len);
+
+extern unsigned int
 flicrs_encode_fli_color64(
         struct CRaster *opt_prev, struct CRaster *next,
         unsigned char *out_buf, size_t max_len, size_t *out_len);
