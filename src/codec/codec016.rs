@@ -51,7 +51,7 @@ pub fn decode_fps_copy(
         let sy = linscale(src_h, dst.h, dy);
         let src_start = src_w * sy;
         let src_end = src_start + src_w;
-        let dst_start = dst.stride * dy + dst.x;
+        let dst_start = dst.stride * (dst.y + dy) + dst.x;
         let dst_end = dst_start + dst.w;
         let src_row = &src[src_start..src_end];
         let dst_row = &mut dst.buf[dst_start..dst_end];
@@ -78,4 +78,38 @@ pub fn encode_fli_copy<W: Write>(
     }
 
     Ok(next.w * next.h)
+}
+
+#[cfg(test)]
+mod tests {
+    use ::RasterMut;
+    use super::decode_fps_copy;
+
+    #[test]
+    fn test_decode_fps_copy() {
+        let src = [
+            11, 12, 13,
+            21, 22, 23,
+            31, 32, 33 ];
+
+        let expected = [
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 11, 11, 12, 12, 13, 13,
+            0, 0, 11, 11, 12, 12, 13, 13,
+            0, 0, 21, 21, 22, 22, 23, 23,
+            0, 0, 21, 21, 22, 22, 23, 23,
+            0, 0, 31, 31, 32, 32, 33, 33,
+            0, 0, 31, 31, 32, 32, 33, 33,
+            0, 0, 0, 0, 0, 0, 0, 0 ];
+
+        const SCREEN_W: usize = 8;
+        const SCREEN_H: usize = 8;
+        const NUM_COLS: usize = 256;
+        let mut buf = [0; SCREEN_W * SCREEN_H];
+        let mut pal = [0; 3 * NUM_COLS];
+        let res = decode_fps_copy(&src, 3, 3,
+                &mut RasterMut::with_offset(2, 1, 6, 6, SCREEN_W, &mut buf, &mut pal));
+        assert!(res.is_ok());
+        assert_eq!(&buf[..], &expected[..]);
+    }
 }
