@@ -466,23 +466,30 @@ impl FlicFileWriter {
     pub fn close(mut self)
             -> FlicResult<()> {
         if let Some(mut file) = self.file.take() {
+            if self.hdr.frame_count == 0 {
+                return Err(FlicError::Corrupted);
+            } else if self.hdr.frame_count == 1 {
+                self.offset_frame2 = try!(file.seek(SeekFrom::Current(0)));
+                try!(write_empty_frame(&mut file));
+            } else {
+                self.hdr.frame_count = self.hdr.frame_count - 1;
+            }
+
             let size = try!(file.seek(SeekFrom::Current(0)));
             if size > ::std::u32::MAX as u64 {
                 return Err(FlicError::ExceededLimit);
             }
-            if self.hdr.frame_count < 2 {
-                return Err(FlicError::Corrupted);
-            }
 
             self.hdr.size = size as u32;
-            self.hdr.frame_count = self.hdr.frame_count - 1;
             try!(file.seek(SeekFrom::Start(0)));
             try!(write_flic_header(
                     &self.hdr, self.offset_frame1, self.offset_frame2,
                     &mut file));
-        }
 
-        Ok(())
+            Ok(())
+        } else {
+            Err(FlicError::NoFile)
+        }
     }
 
     /// Encode the next frame in the FLIC.
@@ -857,6 +864,17 @@ fn write_flc_header<W: Write + Seek>(
         try!(w.write_u32::<LE>(offset_frame2 as u32));
     }
 
+    Ok(())
+}
+
+/// Write an empty frame.
+fn write_empty_frame<W: Write>(
+        w: &mut W)
+        -> FlicResult<()> {
+    try!(w.write_u32::<LE>(SIZE_OF_FLIC_FRAME as u32));
+    try!(w.write_u16::<LE>(FCID_FRAME));
+    try!(w.write_u16::<LE>(0)); // chunks
+    try!(w.write_all(&[0; 8]));
     Ok(())
 }
 
