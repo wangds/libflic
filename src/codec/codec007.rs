@@ -226,7 +226,7 @@ pub fn encode_fli_ss2<W: Write + Seek>(
         }
 
         assert!(count % 2 == 0);
-        if count > 2 * ::std::u16::MAX as usize {
+        if count > 2 * ::std::i16::MAX as usize {
             return Err(FlicError::ExceededLimit);
         }
 
@@ -494,5 +494,30 @@ mod tests {
         let res = encode_fli_ss2(&prev, &next, &mut enc);
         assert!(res.is_ok());
         assert_eq!(&enc.get_ref()[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_ss2_packet_count() {
+        // skip 8, length -4, 0x63, 0x63
+        let src = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63, 0x63 ];
+
+        const SCREEN_W: usize = 16 * (::std::i16::MAX as usize + 1);
+        const SCREEN_H: usize = 1;
+        let buf1 = vec![0; SCREEN_W * SCREEN_H];
+        let mut buf2 = vec![0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * 256];
+
+        for x in buf2.chunks_mut(src.len()) {
+            x.copy_from_slice(&src[..]);
+        }
+
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let prev = Raster::new(SCREEN_W, SCREEN_H, &buf1, &pal);
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf2, &pal);
+        let res = encode_fli_ss2(&prev, &next, &mut enc);
+        assert!(res.is_err());
     }
 }
