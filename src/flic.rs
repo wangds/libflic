@@ -765,8 +765,8 @@ fn read_flc_header(
 /// Read all of the FLIC's frame headers.
 fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
         -> FlicResult<Vec<FlicFrame>> {
+    let mut frames = Vec::with_capacity(min(4096, 1 + hdr.frame_count as usize));
     let mut offset = SIZE_OF_FLIC_HEADER as u64;
-    let mut frames = Vec::new();
 
     // Add 1 to frame count to account for the ring frame.
     for frame_num in 0..(hdr.frame_count + 1) {
@@ -844,7 +844,7 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
 fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
         frame_num: u16, frame_offset: u64, frame_size: u32, num_chunks: usize)
         -> FlicResult<Vec<ChunkId>> {
-    let mut chunks = Vec::new();
+    let mut chunks = Vec::with_capacity(min(4, num_chunks));
     let mut offset = frame_offset + SIZE_OF_FLIC_FRAME as u64;
 
     for _ in 0..num_chunks {
