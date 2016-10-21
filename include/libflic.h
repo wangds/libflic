@@ -163,6 +163,30 @@ flicrs_speed_jiffies(
         struct FlicFile *flic);
 
 extern unsigned int
+flicrs_creator(
+        struct FlicFile *flic);
+
+extern unsigned int
+flicrs_creation_time(
+        struct FlicFile *flic);
+
+extern unsigned int
+flicrs_updater(
+        struct FlicFile *flic);
+
+extern unsigned int
+flicrs_update_time(
+        struct FlicFile *flic);
+
+extern unsigned int
+flicrs_aspect_x(
+        struct FlicFile *flic);
+
+extern unsigned int
+flicrs_aspect_y(
+        struct FlicFile *flic);
+
+extern unsigned int
 flicrs_read_next_frame(
         struct FlicFile *flic, struct CRasterMut *raster);
 

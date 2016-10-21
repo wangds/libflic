@@ -125,6 +125,12 @@ struct FlicHeader {
     h: u16,
     speed_msec: u32,
     speed_jiffies: u16,
+    created: u32,
+    creator: u32,
+    updated: u32,
+    updater: u32,
+    aspect_x: u16,
+    aspect_y: u16,
 }
 
 
@@ -291,6 +297,36 @@ impl FlicFile {
         self.hdr.speed_jiffies
     }
 
+    /// Get the FLIC creator.
+    pub fn creator(&self) -> u32 {
+        self.hdr.creator
+    }
+
+    /// Get the FLIC creation time.
+    pub fn creation_time(&self) -> u32 {
+        self.hdr.created
+    }
+
+    /// Get the most recent updater.
+    pub fn updater(&self) -> u32 {
+        self.hdr.updater
+    }
+
+    /// Get the most recent update time.
+    pub fn update_time(&self) -> u32 {
+        self.hdr.updated
+    }
+
+    /// Get the x-axis aspect ratio.
+    pub fn aspect_x(&self) -> u16 {
+        self.hdr.aspect_x
+    }
+
+    /// Get the y-axis aspect ratio.
+    pub fn aspect_y(&self) -> u16 {
+        self.hdr.aspect_y
+    }
+
     /// Decode the postage stamp.
     pub fn read_postage_stamp<'a>(&mut self, dst: &'a mut RasterMut<'a>)
             -> FlicResult<()> {
@@ -409,6 +445,12 @@ impl FlicFileWriter {
             h: h,
             speed_msec: speed_msec,
             speed_jiffies: jiffy_speed,
+            created: 0,
+            creator: 0,
+            updated: 0,
+            updater: 0,
+            aspect_x: 1,
+            aspect_y: 1,
         };
 
         Ok(FlicFileWriter{
@@ -446,6 +488,12 @@ impl FlicFileWriter {
             h: 200,
             speed_msec: (speed_jiffies as u32) * 1000 / 70,
             speed_jiffies: speed_jiffies,
+            created: 0,
+            creator: 0,
+            updated: 0,
+            updater: 0,
+            aspect_x: 6,
+            aspect_y: 5,
         };
 
         Ok(FlicFileWriter{
@@ -620,6 +668,12 @@ fn read_fli_header(
         h: height,
         speed_msec: (jiffy_speed as u32) * 1000 / 70,
         speed_jiffies: jiffy_speed,
+        created: 0,
+        creator: 0,
+        updated: 0,
+        updater: 0,
+        aspect_x: 6,
+        aspect_y: 5,
     })
 }
 
@@ -636,12 +690,12 @@ fn read_flc_header(
     let _flags = try!(r.read_u16::<LE>());
     let speed = try!(r.read_u32::<LE>());
     try!(r.seek(SeekFrom::Current(2)));
-    let _created = try!(r.read_u32::<LE>());
-    let _creator = try!(r.read_u32::<LE>());
-    let _updated = try!(r.read_u32::<LE>());
-    let _updater = try!(r.read_u32::<LE>());
-    let _aspectx = try!(r.read_u16::<LE>());
-    let _aspecty = try!(r.read_u16::<LE>());
+    let created = try!(r.read_u32::<LE>());
+    let creator = try!(r.read_u32::<LE>());
+    let updated = try!(r.read_u32::<LE>());
+    let updater = try!(r.read_u32::<LE>());
+    let mut aspect_x = try!(r.read_u16::<LE>());
+    let mut aspect_y = try!(r.read_u16::<LE>());
     try!(r.seek(SeekFrom::Current(38)));
     let _oframe1 = try!(r.read_u32::<LE>());
     let _oframe2 = try!(r.read_u32::<LE>());
@@ -657,6 +711,11 @@ fn read_flc_header(
 
     let jiffy_speed = min((speed as u64) * 70 / 1000, ::std::u16::MAX as u64) as u16;
 
+    if aspect_x <= 0 || aspect_y <= 0 {
+        aspect_x = 1;
+        aspect_y = 1;
+    }
+
     Ok(FlicHeader{
         magic: magic,
         size: size,
@@ -665,6 +724,12 @@ fn read_flc_header(
         h: height,
         speed_msec: speed,
         speed_jiffies: jiffy_speed,
+        created: created,
+        creator: creator,
+        updated: updated,
+        updater: updater,
+        aspect_x: aspect_x,
+        aspect_y: aspect_y,
     })
 }
 

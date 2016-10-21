@@ -549,6 +549,84 @@ pub extern "C" fn flicrs_speed_jiffies(flic: *const FlicFile)
     flic.speed_jiffies() as c_uint
 }
 
+/// Get the FLIC creator.
+#[no_mangle]
+pub extern "C" fn flicrs_creator(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.creator() as c_uint
+}
+
+/// Get the FLIC creation time.
+#[no_mangle]
+pub extern "C" fn flicrs_creation_time(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.creation_time() as c_uint
+}
+
+/// Get the most recent updater.
+#[no_mangle]
+pub extern "C" fn flicrs_updater(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.updater() as c_uint
+}
+
+/// Get the most recent update time.
+#[no_mangle]
+pub extern "C" fn flicrs_update_time(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.update_time() as c_uint
+}
+
+/// Get the x-axis aspect ratio.
+#[no_mangle]
+pub extern "C" fn flicrs_aspect_x(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.aspect_x() as c_uint
+}
+
+/// Get the y-axis aspect ratio.
+#[no_mangle]
+pub extern "C" fn flicrs_aspect_y(flic: *const FlicFile)
+        -> c_uint {
+    if flic.is_null() {
+        printerrorln!("bad input parameters");
+        return 0;
+    }
+
+    let flic = unsafe{ &*flic };
+    flic.aspect_y() as c_uint
+}
+
 /// Decode the next frame in the FLIC.
 #[no_mangle]
 pub extern "C" fn flicrs_read_next_frame(
