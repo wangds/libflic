@@ -175,7 +175,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_fli_color64() {
+    fn test_encode_fli_color64_delta() {
         let src = [
             4*0x0A, 4*0x0B, 4*0x0C, 4*0x1A, 4*0x1B, 4*0x1C,
             4*0x00, 4*0x00, 4*0x00, 4*0x00, 4*0x00, 4*0x00, 4*0x00, 4*0x00, 4*0x00,
@@ -203,6 +203,37 @@ mod tests {
         let prev = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal1);
         let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal2);
         let res = encode_fli_color64(Some(&prev), &next, &mut enc);
+        assert!(res.is_ok());
+        assert_eq!(&enc.get_ref()[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_color64_full() {
+        const SCREEN_W: usize = 320;
+        const SCREEN_H: usize = 200;
+        const NUM_COLS: usize = 256;
+
+        let buf = [0; SCREEN_W * SCREEN_H];
+        let mut pal = [0; 3 * NUM_COLS];
+        let mut expected = [0; 4 + 3 * NUM_COLS];
+        expected[0] = 0x01; // count 1, skip 0, copy 256
+
+        for i in 0..NUM_COLS {
+            let c = (i as u8) / 4;
+
+            pal[3 * i + 0] = 4 * c;
+            pal[3 * i + 1] = 4 * c;
+            pal[3 * i + 2] = 4 * c;
+
+            expected[4 + 3 * i + 0] = c;
+            expected[4 + 3 * i + 1] = c;
+            expected[4 + 3 * i + 2] = c;
+        }
+
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
+        let res = encode_fli_color64(None, &next, &mut enc);
         assert!(res.is_ok());
         assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
