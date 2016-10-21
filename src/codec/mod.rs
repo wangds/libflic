@@ -338,12 +338,13 @@ fn linscale(sw: usize, dw: usize, dx: usize)
 
 #[cfg(test)]
 mod tests {
-    use super::{Group,GroupByEq,GroupByLC,GroupBySS2};
+    use super::{Group,GroupByEq,GroupByLC,GroupBySS2,GroupByValue};
 
     #[test]
     fn test_group_by_eq() {
         let xs = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
         let ys = [ 0, 0, 3, 4, 5, 0, 7, 8, 9 ];
+        //         ^^^^  ^^^^^^^  ^  ^^^^^^^
         let expected = [
             Group::Same(0, 0), // prepend
             Group::Diff(0, 2), Group::Same(2, 3), Group::Diff(5, 1) ];
@@ -354,7 +355,7 @@ mod tests {
             .set_ignore_final_same_run()
             .collect();
 
-        assert_eq!(&gs[..], expected);
+        assert_eq!(&gs[..], &expected[..]);
     }
 
     #[test]
@@ -372,7 +373,7 @@ mod tests {
             .set_ignore_final_same_run()
             .collect();
 
-        assert_eq!(&gs[..], expected);
+        assert_eq!(&gs[..], &expected[..]);
     }
 
     #[test]
@@ -390,20 +391,19 @@ mod tests {
             .set_ignore_final_same_run()
             .collect();
 
-        assert_eq!(&gs[..], expected);
+        assert_eq!(&gs[..], &expected[..]);
     }
 
     #[test]
     fn test_group_by_value() {
-        use super::{Group,GroupByValue};
-
         let xs = [ 1, 1, 3, 4, 4, 4, 4, 7, 7 ];
+        //         ^^^^  ^  ^^^^^^^^^^  ^^^^
         let expected = [
             Group::Same(0, 2), Group::Same(2, 1), Group::Same(3, 4), Group::Same(7, 2) ];
 
         let gs: Vec<Group>
             = GroupByValue::new(&xs).collect();
 
-        assert_eq!(&gs[..], expected);
+        assert_eq!(&gs[..], &expected[..]);
     }
 }

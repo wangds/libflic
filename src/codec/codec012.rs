@@ -356,16 +356,12 @@ mod tests {
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
-        {
-            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
-            let res = decode_fli_lc(&src, &mut dst);
-            assert!(res.is_ok());
-        }
-
+        let res = decode_fli_lc(&src,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
         assert_eq!(&buf[(SCREEN_W * 2)..(SCREEN_W * 2 + 16)], &expected[..]);
     }
 
@@ -385,14 +381,13 @@ mod tests {
             0x01, 0x23, 0x45, 0x67, 0x89,
             2, (-4i8) as u8,    // skip 2, length -4
             0xAB,
-            0x00];      // even
+            0x00 ];     // even
 
         const SCREEN_W: usize = 32;
         const SCREEN_H: usize = 4;
-        const NUM_COLS: usize = 256;
-        let buf1: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let mut buf2: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let pal: Vec<u8> = vec![0; 3 * NUM_COLS];
+        let buf1 = [0; SCREEN_W * SCREEN_H];
+        let mut buf2 = [0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * 256];
         buf2[(SCREEN_W * 2)..(SCREEN_W * 2 + 15)].copy_from_slice(&src[..]);
 
         let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -401,7 +396,6 @@ mod tests {
         let next = Raster::new(SCREEN_W, SCREEN_H, &buf2, &pal);
         let res = encode_fli_lc(&prev, &next, &mut enc);
         assert!(res.is_ok());
-
         assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }

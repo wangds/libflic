@@ -39,7 +39,7 @@ pub fn decode_fli_color256(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut idx0 = 0;
 
-    let count = try!(r.read_u16::<LE>()) as usize;
+    let count = try!(r.read_u16::<LE>());
     for _ in 0..count {
         let nskip = try!(r.read_u8()) as usize;
         let ncopy = match try!(r.read_u8()) {
@@ -137,7 +137,7 @@ fn encode_fli_color256_delta<W: Write + Seek>(
     try!(w.seek(SeekFrom::Start(pos0)));
     if count > 0 {
         assert!(count % 2 == 0);
-        assert!(count / 2 <= ::std::u16::MAX as usize);
+        assert!(count / 2 <= ::std::u16::MAX as u32);
         try!(w.write_u16::<LE>((count / 2) as u16));
         try!(w.seek(SeekFrom::Start(pos1)));
 
@@ -171,9 +171,8 @@ mod tests {
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
         let res = decode_fli_color256(&src,
                 &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
@@ -200,9 +199,9 @@ mod tests {
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
         const NUM_COLS: usize = 256;
-        let buf: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let pal1: Vec<u8> = vec![0; 3 * NUM_COLS];
-        let mut pal2: Vec<u8> = vec![0; 3 * NUM_COLS];
+        let buf = [0; SCREEN_W * SCREEN_H];
+        let pal1 = [0; 3 * NUM_COLS];
+        let mut pal2 = [0; 3 * NUM_COLS];
         pal2[0..27].copy_from_slice(&src[..]);
 
         let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());

@@ -101,7 +101,6 @@ pub struct FlicFile {
 /// FLIC animation writer, with a File handle.
 ///
 /// Opens and holds onto the file handle until it is closed.
-#[allow(dead_code)]
 pub struct FlicFileWriter {
     hdr: FlicHeader,
     offset_frame1: u64,
@@ -119,7 +118,6 @@ pub struct FlicFileWriter {
 pub const SIZE_OF_FLIC_HEADER: usize = 128;
 
 /// FLIC header.
-#[allow(dead_code)]
 struct FlicHeader {
     magic: u16,
     size: u32,
@@ -186,7 +184,6 @@ pub const FCID_FRAME: u16 = 0xF1FA; // also: FLIF_MAGIC.
 pub const SIZE_OF_FLIC_FRAME: usize = 16;
 
 /// FLIC frame header.
-#[allow(dead_code)]
 struct FlicFrame {
     chunks: Vec<ChunkId>,
 }
@@ -215,7 +212,6 @@ struct FlicFrame {
 pub const SIZE_OF_CHUNK: usize = 6;
 
 /// Chunk header.
-#[allow(dead_code)]
 struct ChunkId {
     // Note: offset to the data.
     offset: u64,

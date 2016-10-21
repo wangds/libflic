@@ -14,7 +14,7 @@ use super::linscale;
 /// right and then top to bottom.  This type of chunk is created when
 /// the preferred compression method (SS2 or BRUN) generates more data
 /// than the uncompressed frame image; a relatively rare situation.
-pub const FLI_COPY: u16 = 16;
+pub const FLI_COPY: u16 = 16; // also: FLI_COLOR_0.
 
 /// Magic for a FPS_COPY chunk - Postage Stamp, No Compression.
 pub const FPS_COPY: u16 = FLI_COPY;
@@ -104,9 +104,8 @@ mod tests {
 
         const SCREEN_W: usize = 8;
         const SCREEN_H: usize = 8;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
         let res = decode_fps_copy(&src, 3, 3,
                 &mut RasterMut::with_offset(2, 1, 6, 6, SCREEN_W, &mut buf, &mut pal));
         assert!(res.is_ok());

@@ -20,7 +20,7 @@ pub fn decode_fli_color64(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut idx0 = 0;
 
-    let count = try!(r.read_u16::<LE>()) as usize;
+    let count = try!(r.read_u16::<LE>());
     for _ in 0..count {
         let nskip = try!(r.read_u8()) as usize;
         let ncopy = match try!(r.read_u8()) {
@@ -131,7 +131,7 @@ fn encode_fli_color64_delta<W: Write + Seek>(
     try!(w.seek(SeekFrom::Start(pos0)));
     if count > 0 {
         assert!(count % 2 == 0);
-        assert!(count / 2 <= ::std::u16::MAX as usize);
+        assert!(count / 2 <= ::std::u16::MAX as u32);
         try!(w.write_u16::<LE>((count / 2) as u16));
         try!(w.seek(SeekFrom::Start(pos1)));
 
@@ -165,16 +165,12 @@ mod tests {
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
-        {
-            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
-            let res = decode_fli_color64(&src, &mut dst);
-            assert!(res.is_ok());
-        }
-
+        let res = decode_fli_color64(&src,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
         assert_eq!(&pal[0..33], &expected[..]);
     }
 
@@ -197,9 +193,9 @@ mod tests {
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
         const NUM_COLS: usize = 256;
-        let buf: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let pal1: Vec<u8> = vec![0; 3 * NUM_COLS];
-        let mut pal2: Vec<u8> = vec![0; 3 * NUM_COLS];
+        let buf = [0; SCREEN_W * SCREEN_H];
+        let pal1 = [0; 3 * NUM_COLS];
+        let mut pal2 = [0; 3 * NUM_COLS];
         pal2[0..27].copy_from_slice(&src[..]);
 
         let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -208,7 +204,6 @@ mod tests {
         let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal2);
         let res = encode_fli_color64(Some(&prev), &next, &mut enc);
         assert!(res.is_ok());
-
         assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }

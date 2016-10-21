@@ -354,9 +354,8 @@ mod tests {
     #[test]
     fn test_decode_fli_brun() {
         let src = [
-            0x02,   // count 2
-            3,      // length 3
-            0xAB,
+            0x02,       // count 2
+            3,    0xAB, // length 3
             (-4i8) as u8,   // length -4
             0x01, 0x23, 0x45, 0x67 ];
 
@@ -366,25 +365,20 @@ mod tests {
 
         const SCREEN_W: usize = 7;
         const SCREEN_H: usize = 1;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
-        {
-            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
-            let res = decode_fli_brun(&src, &mut dst);
-            assert!(res.is_ok());
-        }
-
+        let res = decode_fli_brun(&src,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }
 
     #[test]
     fn test_decode_fps_brun() {
         let src = [
-            0x02,   // count 2
-            3,      // length 3
-            0xAB,
+            0x02,       // count 2
+            3,    0xAB, // length 3
             (-4i8) as u8,   // length -4
             0x01, 0x23, 0x45, 0x67 ];
 
@@ -396,16 +390,12 @@ mod tests {
 
         const SCREEN_W: usize = 7 * 2;
         const SCREEN_H: usize = 1 * 2;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
-        {
-            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
-            let res = decode_fps_brun(&src, 7, 1, &mut dst);
-            assert!(res.is_ok());
-        }
-
+        let res = decode_fps_brun(&src, 7, 1,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
         assert_eq!(&buf[..], &expected[..]);
     }
 
@@ -417,20 +407,18 @@ mod tests {
 
         let expected = [
             5,          // count 5
-            3,          // length 3
-            0xAB,
+            3,    0xAB, // length 3
             (-5i8) as u8,   // length -5
             0x01, 0x23, 0x45, 0x67, 0x89,
             127,  0x00, // length 127
             127,  0x00, // length 127
-            58,   0x00, // length 59
+            58,   0x00, // length 58
             0x00 ];     // even
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 1;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let pal = [0; 3 * NUM_COLS];
+        let pal = [0; 3 * 256];
         buf[0..8].copy_from_slice(&src[..]);
 
         let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -438,7 +426,6 @@ mod tests {
         let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
         let res = encode_fli_brun(&next, &mut enc);
         assert!(res.is_ok());
-
         assert_eq!(&enc.get_ref()[..], &expected[..]);
     }
 }

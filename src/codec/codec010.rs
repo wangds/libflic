@@ -81,16 +81,12 @@ mod tests {
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
-        {
-            let mut dst = RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal);
-            let res = decode_fli_sbsrsc(&src, &mut dst);
-            assert!(res.is_ok());
-        }
-
+        let res = decode_fli_sbsrsc(&src,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
         assert_eq!(&buf[0..16], &expected[..]);
     }
 }

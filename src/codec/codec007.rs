@@ -58,7 +58,7 @@ pub fn decode_fli_ss2(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut y = 0;
 
-    let mut h = try!(r.read_u16::<LE>()) as usize;
+    let mut h = try!(r.read_u16::<LE>());
     while y < dst.h && h > 0 {
         let mut count = try!(r.read_u16::<LE>());
 
@@ -143,7 +143,7 @@ pub fn encode_fli_ss2<W: Write + Seek>(
     let next_start = next.stride * next.y;
     let next_end = next.stride * (next.y + next.h);
 
-    let mut line_count: u16 = 0;
+    let mut line_count = 0;
     let mut skip_count = 0;
 
     for (p, n) in prev.buf[prev_start..prev_end].chunks(prev.stride)
@@ -411,21 +411,19 @@ mod tests {
             2, (-4i8) as u8,    // skip 2, length -4
             0xAB, 0xCD,
             0xFF, 0xFF, // count -1
-            0xEE, 0x80, // bit15 = 1, bit14 = 0, data = 0xFF
-            0x00, 0x00, // count 0
-        ];
+            0xEE, 0x80, // bit15 = 1, bit14 = 0, data = 0xEE
+            0x00, 0x00 ];   // count 0
+
         let expected = [
             0x00, 0x00, 0x00,
             0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78, 0x89, 0x90,
             0x00, 0x00,
-            0xAB, 0xCD, 0xAB, 0xCD, 0xAB, 0xCD, 0xAB, 0xCD,
-        ];
+            0xAB, 0xCD, 0xAB, 0xCD, 0xAB, 0xCD, 0xAB, 0xCD ];
 
         const SCREEN_W: usize = 320;
         const SCREEN_H: usize = 200;
-        const NUM_COLS: usize = 256;
         let mut buf = [0; SCREEN_W * SCREEN_H];
-        let mut pal = [0; 3 * NUM_COLS];
+        let mut pal = [0; 3 * 256];
 
         let res = decode_fli_ss2(&src,
                 &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
@@ -482,10 +480,9 @@ mod tests {
 
         const SCREEN_W: usize = 32;
         const SCREEN_H: usize = 8;
-        const NUM_COLS: usize = 256;
-        let buf1: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let mut buf2: Vec<u8> = vec![0; SCREEN_W * SCREEN_H];
-        let pal: Vec<u8> = vec![0; 3 * NUM_COLS];
+        let buf1 = [0; SCREEN_W * SCREEN_H];
+        let mut buf2 = [0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * 256];
         buf2[(SCREEN_W * 2)..(SCREEN_W * 2 + 32)].copy_from_slice(&src1[..]);
         buf2[(SCREEN_W * 4)..(SCREEN_W * 4 + 32)].copy_from_slice(&src2[..]);
         buf2[(SCREEN_W * 6)..(SCREEN_W * 6 + 32)].copy_from_slice(&src3[..]);

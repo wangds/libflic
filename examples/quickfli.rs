@@ -10,10 +10,10 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 
-const DEFAULT_SCREEN_WIDTH: u32 = 640;
-const DEFAULT_SCREEN_HEIGHT: u32 = 400;
-const MIN_SCREEN_WIDTH: u32 = 320;
-const MIN_SCREEN_HEIGHT: u32 = 200;
+const DEFAULT_SCREEN_W: u32 = 640;
+const DEFAULT_SCREEN_H: u32 = 400;
+const MIN_SCREEN_W: u32 = 320;
+const MIN_SCREEN_H: u32 = 200;
 
 fn main() {
     let mut filenames: Vec<String> = env::args().skip(1).collect();
@@ -30,13 +30,13 @@ fn main() {
     let video = sdl.video().unwrap();
 
     let mut window
-        = video.window("QuickFLI", DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+        = video.window("QuickFLI", DEFAULT_SCREEN_W, DEFAULT_SCREEN_H)
         .resizable()
         .position_centered()
         .opengl()
         .build().unwrap();
 
-    let _ = window.set_minimum_size(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT);
+    let _ = window.set_minimum_size(MIN_SCREEN_W, MIN_SCREEN_H);
     let mut renderer = window.renderer().build().unwrap();
     let mut timer = sdl.timer().unwrap();
     let mut event_pump = sdl.event_pump().unwrap();
@@ -161,6 +161,6 @@ fn present_to_screen(
         renderer: &mut sdl2::render::Renderer,
         texture: &sdl2::render::Texture) {
     renderer.clear();
-    renderer.copy(&texture, None, None);
+    let _ = renderer.copy(&texture, None, None);
     renderer.present();
 }
