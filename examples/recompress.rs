@@ -65,6 +65,9 @@ fn recompress(fin: &mut FlicFile, fout: &mut FlicFileWriter)
     let w = fin.width() as usize;
     let h = fin.height() as usize;
 
+    fout.set_creator(fin.creator(), fin.creation_time());
+    fout.set_aspect_ratio(fin.aspect_x(), fin.aspect_y());
+
     let mut buf_prev = vec![0; w * h];
     let mut buf_next = vec![0; w * h];
     let mut pal_prev = [0; 3 * 256];

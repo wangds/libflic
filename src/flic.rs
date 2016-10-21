@@ -82,6 +82,9 @@ pub const FLIH_MAGIC: u16 = 0xAF11;
 ///       88 |     40 | reserved | Unused space, set to zeroes.
 pub const FLIHR_MAGIC: u16 = 0xAF12;
 
+/// Default updater for files written by LibFLIC, "FLRS".
+pub const LIBFLIC_UPDATER_ID: u32 = 0x464C5253;
+
 /// FLIC animation, with a File handle.
 ///
 /// Opens and holds onto the file handle until it is dropped.
@@ -448,7 +451,7 @@ impl FlicFileWriter {
             created: 0,
             creator: 0,
             updated: 0,
-            updater: 0,
+            updater: LIBFLIC_UPDATER_ID,
             aspect_x: 1,
             aspect_y: 1,
         };
@@ -491,7 +494,7 @@ impl FlicFileWriter {
             created: 0,
             creator: 0,
             updated: 0,
-            updater: 0,
+            updater: LIBFLIC_UPDATER_ID,
             aspect_x: 6,
             aspect_y: 5,
         };
@@ -503,6 +506,32 @@ impl FlicFileWriter {
             filename: filename.to_path_buf(),
             file: Some(file),
         })
+    }
+
+    /// Set the FLIC creator and creation time.
+    pub fn set_creator(&mut self, creator: u32, created: u32) {
+        self.hdr.creator = creator;
+        self.hdr.created = created;
+    }
+
+    /// Set the most recent updater and update time.
+    pub fn set_updater(&mut self, updater: u32, updated: u32) {
+        self.hdr.updater = updater;
+        self.hdr.updated = updated;
+    }
+
+    /// Set the aspect ratio, i.e. x by y is a square.
+    ///
+    /// Most often, the x:y aspect ratio will be 1:1.
+    /// A 320x200 FLIC has a ratio of 6:5.
+    pub fn set_aspect_ratio(&mut self, x: u16, y: u16) {
+        if x > 0 && y > 0 {
+            self.hdr.aspect_x = x;
+            self.hdr.aspect_y = y;
+        } else {
+            self.hdr.aspect_x = 1;
+            self.hdr.aspect_y = 1;
+        }
     }
 
     /// Close the FLIC file.
@@ -920,7 +949,15 @@ fn write_flc_header<W: Write + Seek>(
     try!(w.write_u16::<LE>(depth));
     try!(w.write_u16::<LE>(flags));
     try!(w.write_u32::<LE>(hdr.speed_msec));
-    try!(w.seek(SeekFrom::Current(60)));
+
+    try!(w.seek(SeekFrom::Current(2))); // reserved
+    try!(w.write_u32::<LE>(hdr.created));
+    try!(w.write_u32::<LE>(hdr.creator));
+    try!(w.write_u32::<LE>(hdr.updated));
+    try!(w.write_u32::<LE>(hdr.updater));
+    try!(w.write_u16::<LE>(hdr.aspect_x));
+    try!(w.write_u16::<LE>(hdr.aspect_y));
+    try!(w.seek(SeekFrom::Current(38)));
 
     // If the offsets are too big, then leave them as 0 and hope other
     // libraries will compute it themselves.
