@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_fli_color256() {
+    fn test_encode_fli_color256_delta() {
         let src = [
             0x0A, 0x0B, 0x0C, 0x1A, 0x1B, 0x1C,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -211,5 +211,25 @@ mod tests {
         let res = encode_fli_color256(Some(&prev), &next, &mut enc);
         assert!(res.is_ok());
         assert_eq!(&enc.get_ref()[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_encode_fli_color256_full() {
+        let expected = [
+            0x01, 0x00, // count 1
+            0, 0 ];     // skip 0, copy 256
+
+        const SCREEN_W: usize = 320;
+        const SCREEN_H: usize = 200;
+        const NUM_COLS: usize = 256;
+        let buf = [0; SCREEN_W * SCREEN_H];
+        let pal = [0; 3 * NUM_COLS];
+        let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+
+        let next = Raster::new(SCREEN_W, SCREEN_H, &buf, &pal);
+        let res = encode_fli_color256(None, &next, &mut enc);
+        assert!(res.is_ok());
+        assert_eq!(&enc.get_ref()[0..4], &expected[..]);
+        assert_eq!(&enc.get_ref()[4..(4 + 3 * NUM_COLS)], &pal[..]);
     }
 }
