@@ -1,7 +1,7 @@
 //! Codec for chunk type 18 = FLI_PSTAMP.
 
 use ::{Raster,RasterMut};
-use super::linscale;
+use super::LinScale;
 
 /// Magic for a FLI_PSTAMP chunk - Postage Stamp Image.
 ///
@@ -141,11 +141,11 @@ pub fn prepare_pstamp(
         src: &Raster, xlat256: &[u8], dst_w: usize, dst_h: usize)
         -> Vec<u8> {
     assert!(xlat256.len() >= ::std::u8::MAX as usize);
+    dst_w.checked_mul(dst_h).expect("overflow");
 
     let mut pstamp = vec![0; dst_w * dst_h];
 
-    for dy in 0..dst_h {
-        let sy = linscale(src.h, dst_h, dy);
+    for (sy, dy) in LinScale::new(src.h, dst_h) {
         let src_start = src.stride * (src.y + sy) + src.x;
         let src_end = src_start + src.w;
         let dst_start = dst_w * dy;
@@ -153,8 +153,7 @@ pub fn prepare_pstamp(
         let src_row = &src.buf[src_start..src_end];
         let dst_row = &mut pstamp[dst_start..dst_end];
 
-        for dx in 0..dst_w {
-            let sx = linscale(src.w, dst_w, dx);
+        for (sx, dx) in LinScale::new(src.w, dst_w) {
             dst_row[dx] = xlat256[src_row[sx] as usize];
         }
     }

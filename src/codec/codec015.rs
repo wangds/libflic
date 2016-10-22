@@ -5,7 +5,7 @@ use std::io::{Cursor,Read,Seek,SeekFrom,Write};
 use byteorder::{ReadBytesExt,WriteBytesExt};
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
-use super::{Group,GroupByValue,linscale};
+use super::{Group,GroupByValue,LinScale};
 
 /// Magic for a FLI_BRUN chunk - Byte Run Length Compression.
 ///
@@ -93,13 +93,12 @@ pub fn decode_fps_brun(
     if src_w <= 0 || src_h <= 0 {
         return Err(FlicError::WrongResolution);
     }
+    src_w.checked_mul(src_h).expect("overflow");
 
     let mut r = Cursor::new(src);
     let mut sy = 0;
 
-    for dy in 0..dst.h {
-        let next_y = linscale(src_h, dst.h, dy);
-
+    for (next_y, dy) in LinScale::new(src_h, dst.h) {
         // Handle case where src_y < dst.h.
         if next_y < sy && dy > 0 {
             let split = dst.stride * (dst.y + dy);
@@ -160,8 +159,8 @@ fn decode_fps_brun_line(
         r: &mut Cursor<&[u8]>, sw: usize, dw: usize, dst: &mut [u8])
         -> FlicResult<()> {
     let mut buf = [0; (-(::std::i8::MIN as i32)) as usize];
+    let mut linscale = LinScale::new(sw, dw).peekable();
     let mut sx = 0;
-    let mut dx = 0;
 
     // Skip obsolete count byte.
     let _count = try!(r.read_u8());
@@ -172,28 +171,19 @@ fn decode_fps_brun_line(
         // Each iteration processes
         //
         //  src[sx .. sx + |signed_length|],
-        //  dst[dx .. dx_end].
         //
-        // where dx_end is given by:
-        //
-        //  sx + |signed_length| = linscale(sw, dw, dx_end).
-        //
-        // After each iteration, we set:
-        //
-        //  sx' = sx + |signed_length|,
-        //  dx' = dx_end.
-        debug_assert!(dx >= dw || sx <= linscale(sw, dw, dx));
+        // and the corresponding elements in dst.
+        debug_assert!(linscale.peek().map_or(true, |next| sx <= next.0));
 
         if signed_length >= 0 {
             let end = sx + signed_length as usize;
             let c = try!(r.read_u8());
 
             // Know src[sx..(sx + signed_length)] = c.
-            while dx < dw {
-                let next_x = linscale(sw, dw, dx);
-                if next_x < end {
-                    dst[dx] = c;
-                    dx = dx + 1;
+            while let Some(&(next_sx, next_dx)) = linscale.peek() {
+                if next_sx < end {
+                    dst[next_dx] = c;
+                    linscale.next();
                 } else {
                     break;
                 }
@@ -205,11 +195,10 @@ fn decode_fps_brun_line(
             try!(r.read_exact(&mut buf[0..(-signed_length) as usize]));
 
             // Know src[sx..(sx - signed_length)] = buf.
-            while dx < dw {
-                let next_x = linscale(sw, dw, dx);
-                if next_x < end {
-                    dst[dx] = buf[next_x - sx];
-                    dx = dx + 1;
+            while let Some(&(next_sx, next_dx)) = linscale.peek() {
+                if next_sx < end {
+                    dst[next_dx] = buf[next_sx - sx];
+                    linscale.next();
                 } else {
                     break;
                 }

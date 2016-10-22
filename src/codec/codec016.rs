@@ -3,7 +3,7 @@
 use std::io::Write;
 
 use ::{FlicError,FlicResult,Raster,RasterMut};
-use super::linscale;
+use super::LinScale;
 
 /// Magic for a FLI_COPY chunk - No Compression.
 ///
@@ -43,12 +43,12 @@ pub fn decode_fli_copy(src: &[u8], dst: &mut RasterMut)
 pub fn decode_fps_copy(
         src: &[u8], src_w: usize, src_h: usize, dst: &mut RasterMut)
         -> FlicResult<()> {
-    if src_w <= 0 || src_h <= 0 || (src_w * src_h > src.len()) {
+    if src_w <= 0 || src_h <= 0
+            || src_w.checked_mul(src_h).expect("overflow") > src.len() {
         return Err(FlicError::WrongResolution);
     }
 
-    for dy in 0..dst.h {
-        let sy = linscale(src_h, dst.h, dy);
+    for (sy, dy) in LinScale::new(src_h, dst.h) {
         let src_start = src_w * sy;
         let src_end = src_start + src_w;
         let dst_start = dst.stride * (dst.y + dy) + dst.x;
@@ -56,8 +56,7 @@ pub fn decode_fps_copy(
         let src_row = &src[src_start..src_end];
         let dst_row = &mut dst.buf[dst_start..dst_end];
 
-        for dx in 0..dst.w {
-            let sx = linscale(src_w, dst.w, dx);
+        for (sx, dx) in LinScale::new(src_w, dst.w) {
             dst_row[dx] = src_row[sx];
         }
     }

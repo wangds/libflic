@@ -75,6 +75,15 @@ struct GroupByValue<'a> {
     idx: usize,
 }
 
+/// An iterator to help with linear scaling functions.
+struct LinScale {
+    sw: usize,
+    dw: usize,
+    sx: usize,
+    dx: usize,
+    xerr: usize,
+}
+
 /*--------------------------------------------------------------*/
 
 /// Returns true if the chunk type modifies the palette.
@@ -324,21 +333,86 @@ impl<'a> Iterator for GroupByValue<'a> {
     }
 }
 
-/// A little routine to help with linear scaling functions.
-fn linscale(sw: usize, dw: usize, dx: usize)
-        -> usize {
-    assert!(sw > 0 && dw > 0);
-    assert!(dx < dw);
+impl LinScale {
+    /// Create a new LinScale iterator.
+    fn new(sw: usize, dw: usize) -> Self {
+        assert!(sw > 0 && dw > 0);
+        LinScale {
+            sw: sw,
+            dw: dw,
+            sx: 0,
+            dx: 0,
+            xerr: sw / 2,
+        }
+    }
+}
 
-    match dx {
-        0 => 0,
-        _ => (dx * sw + sw / 2) / dw,
+impl Iterator for LinScale {
+    type Item = (usize, usize);
+
+    /// Advances the iterator and returns the next value.
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.dx >= self.dw {
+            return None;
+        }
+
+        let res = (self.sx, self.dx);
+
+        // We want to maintain the relationship: sx / sw = (dx + 0.5) / dw.
+        // As we advance dx -> dx' = dx + 1,
+        // then we advance sx -> sx' = sx + sw / dw.
+        //
+        // Accumulate truncation errors in xerr, and add it back in
+        // when advancing sx -> sx' = sx + (sw + xerr) / dw.
+        self.dx = self.dx + 1;
+        if self.dx < self.dw {
+            let (add, overflow) = self.sw.overflowing_add(self.xerr);
+            if !overflow {
+                let div = add / self.dw;
+                let rem = add - div * self.dw;
+                self.sx = self.sx + div;
+                self.xerr = rem;
+            } else {
+                // Have total_add = (::std::usize::MAX + 1) + add,
+                // add < ::std::usize::MAX.
+                let add1 = add + 1;
+                let div1 = add1 / self.dw;
+                let rem1 = add1 - div1 * self.dw;
+                let div2 = ::std::usize::MAX / self.dw;
+                let rem2 = ::std::usize::MAX - div2 * self.dw;
+
+                // We have rem1 < dw, rem2 < dw.
+                // For rem1 + rem2 to overflow, need:
+                //
+                //  dw > (::std::usize::MAX + 1) / 2
+                //
+                // At this range of dw, div2 = 1, so:
+                //
+                //  rem2 = ::std::usize::MAX - dw
+                //
+                // Therefore to overflow, need:
+                //
+                //  rem1 + rem2 >= ::std::usize::MAX + 1
+                //  rem1 >= (::std::usize::MAX + 1) - (::std::usize::MAX - dw)
+                //        = dw + 1
+                //
+                // Since rem1 < dw, overflow cannot happen.
+                let div3 = (rem1 + rem2) / self.dw;
+                let rem3 = (rem1 + rem2) - div3 * self.dw;
+                self.sx = self.sx + div1 + div2 + div3;
+                self.xerr = rem3;
+            }
+        } else {
+            self.sx = self.sw;
+        }
+
+        return Some(res);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Group,GroupByEq,GroupByLC,GroupBySS2,GroupByValue};
+    use super::{Group,GroupByEq,GroupByLC,GroupBySS2,GroupByValue,LinScale};
 
     #[test]
     fn test_group_by_eq() {
@@ -405,5 +479,79 @@ mod tests {
             = GroupByValue::new(&xs).collect();
 
         assert_eq!(&gs[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_linscale() {
+        fn linscale(sw: usize, dw: usize, dx: usize) -> usize {
+            match dx {
+                0 => 0,
+                _ => (dx * sw + sw / 2) / dw,
+            }
+        }
+
+        let sw = 320;
+        let dw = 17;
+        let expected: Vec<usize>
+            = (0..dw)
+            .map(|dx| linscale(sw, dw, dx))
+            .collect();
+
+        let xs: Vec<usize>
+            = LinScale::new(sw, dw)
+            .map(|x| x.0)
+            .collect();
+
+        assert_eq!(&xs[..], &expected[..]);
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "32")]
+    fn test_linscale_overflow() {
+        // Expected results from Wolfram Alpha, for n > 0:
+        //
+        //  [(2^32-1) * n + (2^32-1) / 2] / 10
+        let expected = [
+              644_245_094,
+            1_073_741_823,
+            1_503_238_553,
+            1_932_735_282,
+            2_362_232_012,
+            2_791_728_741,
+            3_221_225_471,
+            3_650_722_200,
+            4_080_218_930 ];
+
+        let xs: Vec<usize>
+            = LinScale::new(::std::usize::MAX, 10)
+            .map(|x| x.0)
+            .collect();
+
+        assert_eq!(&xs[1..], &expected[..]);
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn test_linscale_overflow() {
+        // Expected results from Wolfram Alpha, for n > 0:
+        //
+        //  [(2^64-1) * n + (2^64-1) / 2] / 10
+        let expected = [
+             2_767_011_611_056_432_742,
+             4_611_686_018_427_387_903,
+             6_456_360_425_798_343_065,
+             8_301_034_833_169_298_226,
+            10_145_709_240_540_253_388,
+            11_990_383_647_911_208_549,
+            13_835_058_055_282_163_711,
+            15_679_732_462_653_118_872,
+            17_524_406_870_024_074_034 ];
+
+        let xs: Vec<usize>
+            = LinScale::new(::std::usize::MAX, 10)
+            .map(|x| x.0)
+            .collect();
+
+        assert_eq!(&xs[1..], &expected[..]);
     }
 }

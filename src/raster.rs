@@ -40,9 +40,10 @@ impl<'a> Raster<'a> {
             x: usize, y: usize, w: usize, h: usize, stride: usize,
             buf: &'a [u8], pal: &'a [u8])
             -> Self {
-        assert!(x < stride);
-        assert!(x + w <= stride);
-        assert!(stride * (y + h) <= buf.len());
+        let x1 = x.checked_add(w).expect("overflow");
+        let y1 = y.checked_add(h).expect("overflow");
+        assert!(x < x1 && x1 <= stride && h > 0);
+        assert!(stride.checked_mul(y1).expect("overflow") <= buf.len());
         assert!(pal.len() == 3 * 256);
 
         Raster {
@@ -95,9 +96,10 @@ impl<'a> RasterMut<'a> {
             x: usize, y: usize, w: usize, h: usize, stride: usize,
             buf: &'a mut [u8], pal: &'a mut [u8])
             -> Self {
-        assert!(x < stride);
-        assert!(x + w <= stride);
-        assert!(stride * (y + h) <= buf.len());
+        let x1 = x.checked_add(w).expect("overflow");
+        let y1 = y.checked_add(h).expect("overflow");
+        assert!(x < x1 && x1 <= stride && h > 0);
+        assert!(stride.checked_mul(y1).expect("overflow") <= buf.len());
         assert!(pal.len() == 3 * 256);
 
         RasterMut {
@@ -109,5 +111,28 @@ impl<'a> RasterMut<'a> {
             buf: buf,
             pal: pal,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ::{Raster,RasterMut};
+
+    #[test]
+    #[should_panic]
+    fn test_raster_overflow() {
+        let buf = [0; 1];
+        let pal = [0; 3 * 256];
+        let _ = Raster::new(
+                ::std::usize::MAX, ::std::usize::MAX, &buf, &pal);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_raster_mut_overflow() {
+        let mut buf = [0; 1];
+        let mut pal = [0; 3 * 256];
+        let _ = RasterMut::new(
+                ::std::usize::MAX, ::std::usize::MAX, &mut buf, &mut pal);
     }
 }
