@@ -375,7 +375,47 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_fps_brun() {
+    fn test_decode_fps_brun_downscale() {
+        let src = [
+            0x02,       // count 2
+            6,    0xAB, // length 6
+            (-8i8) as u8,   // length -8
+            0x01, 0x01, 0x23, 0x23, 0x45, 0x45, 0x67, 0x67,
+
+            0x01,       // count 1
+            (-14i8) as u8,   // length -14
+            0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x01, 0x01, 0x23, 0x23, 0x45, 0x45, 0x67, 0x67,
+
+            0x05,       // count 5
+            6,    0xAB, // length 6
+            2,    0x01, // length 2
+            2,    0x23, // length 2
+            2,    0x45, // length 2
+            2,    0x67, // length 2
+
+            0x01,       // count 1
+            (-14i8) as u8,   // length -14
+            0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x01, 0x01, 0x23, 0x23, 0x45, 0x45, 0x67, 0x67 ];
+
+        let expected = [
+            0xAB, 0xAB, 0xAB, 0x01, 0x23, 0x45, 0x67,
+            0xAB, 0xAB, 0xAB, 0x01, 0x23, 0x45, 0x67 ];
+
+        const SCREEN_W: usize = 7;
+        const SCREEN_H: usize = 2;
+        let mut buf = [0; SCREEN_W * SCREEN_H];
+        let mut pal = [0; 3 * 256];
+
+        let res = decode_fps_brun(&src, 7 * 2, 2 * 2,
+                &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
+        assert!(res.is_ok());
+        assert_eq!(&buf[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_decode_fps_brun_upscale() {
         let src = [
             0x02,       // count 2
             3,    0xAB, // length 3
