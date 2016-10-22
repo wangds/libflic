@@ -367,28 +367,40 @@ mod tests {
 
     #[test]
     fn test_encode_fli_lc() {
-        let src = [
+        let src1 = [
             0x00, 0x00,
             0x01, 0x23, 0x45, 0x67, 0x89,
             0x00, 0x00, 0xAB, 0xAB, 0xAB, 0xAB,
-            0x00, 0x00 ];
+            0x00, 0x00, 0x00 ];
+
+        let src2 = [
+            0x01, 0x00, 0x45, 0x00, 0x89,
+            0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB, 0xAB,
+            0x00, 0x00, 0x00 ];
 
         let expected = [
             0x02, 0x00, // y0 2
-            0x01, 0x00, // hh 1
+            0x03, 0x00, // hh 3
             2,          // count 2
             2, 5,       // skip 2, length 5
             0x01, 0x23, 0x45, 0x67, 0x89,
             2, (-4i8) as u8,    // skip 2, length -4
             0xAB,
+            0,          // count 0
+            2,          // count 2
+            0, 5,       // skip 0, length 5
+            0x01, 0x00, 0x45, 0x00, 0x89,
+            0, (-8i8) as u8,    // skip 0, length -8
+            0xAB,
             0x00 ];     // even
 
         const SCREEN_W: usize = 32;
-        const SCREEN_H: usize = 4;
+        const SCREEN_H: usize = 8;
         let buf1 = [0; SCREEN_W * SCREEN_H];
         let mut buf2 = [0; SCREEN_W * SCREEN_H];
         let pal = [0; 3 * 256];
-        buf2[(SCREEN_W * 2)..(SCREEN_W * 2 + 15)].copy_from_slice(&src[..]);
+        buf2[(SCREEN_W * 2)..(SCREEN_W * 2 + 16)].copy_from_slice(&src1[..]);
+        buf2[(SCREEN_W * 4)..(SCREEN_W * 4 + 16)].copy_from_slice(&src2[..]);
 
         let mut enc: Cursor<Vec<u8>> = Cursor::new(Vec::new());
 
