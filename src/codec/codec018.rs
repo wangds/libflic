@@ -142,7 +142,7 @@ pub fn prepare_pstamp(
         -> Vec<u8> {
     assert!(xlat256.len() >= ::std::u8::MAX as usize);
 
-    let mut pstamp = Vec::with_capacity(dst_w * dst_h);
+    let mut pstamp = vec![0; dst_w * dst_h];
 
     for dy in 0..dst_h {
         let sy = linscale(src.h, dst_h, dy);
@@ -164,7 +164,7 @@ pub fn prepare_pstamp(
 
 #[cfg(test)]
 mod tests {
-    use ::RasterMut;
+    use ::{Raster,RasterMut};
     use super::*;
 
     #[test]
@@ -209,5 +209,38 @@ mod tests {
         apply_pstamp_xlat256(&xlat256,
                 &mut RasterMut::new(SCREEN_W, SCREEN_H, &mut buf, &mut pal));
         assert_eq!(&buf[..], &expected[..]);
+    }
+
+    #[test]
+    fn test_prepare_pstamp() {
+        let src = [
+            11, 11, 12, 12, 13, 13, 14, 14,
+            11, 11, 12, 12, 13, 13, 14, 14,
+            21, 21, 22, 22, 23, 23, 24, 24,
+            21, 21, 22, 22, 23, 23, 24, 24,
+            31, 31, 32, 32, 33, 33, 34, 34,
+            31, 31, 32, 32, 33, 33, 34, 34,
+            41, 41, 42, 42, 43, 43, 44, 44,
+            41, 41, 42, 42, 43, 43, 44, 44 ];
+
+        let expected = [
+            11, 12, 13, 14,
+            21, 22, 23, 24,
+            31, 32, 33, 34,
+            41, 42, 43, 44 ];
+
+        const SCREEN_W: usize = 8;
+        const SCREEN_H: usize = 8;
+        let mut xlat256 = [0; 256];
+        let pal = [0; 3 * 256];
+
+        for i in 0..256 {
+            xlat256[i] = i as u8;
+        }
+
+        let raster = Raster::new(SCREEN_W, SCREEN_H, &src, &pal);
+        let pstamp = prepare_pstamp(
+                &raster, &xlat256, 4, 4);
+        assert_eq!(&pstamp[..], &expected[..]);
     }
 }
