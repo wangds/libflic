@@ -3,6 +3,7 @@ name = "flic"
 version = "0.1.0"
 authors = ["David Wang <millimillenary@gmail.com>"]
 license = "MIT"
+readme = "README.md"
 
 [lib]
 name = "flic"
