@@ -1,5 +1,5 @@
 
-LibFLIC
+LibFLIC [![Version][version-img]][version-url] [![Status][travis-ci-img]][travis-ci-url]
 =======
 
 
@@ -10,7 +10,7 @@ LibFLIC provides routines for encoding and decoding Autodesk Animator
 FLI and Autodesk Animator Pro FLC files.
 
 The code is based on the documentation and source code of
-[Animator and Animator Pro](https://github.com/AnimatorPro/Animator-Pro)
+[Animator and Animator Pro][animator-pro]
 that has been released by Jim Kent.
 
 LibFLIC is written entirely in Rust.  C bindings to the underlying
@@ -100,7 +100,21 @@ user to ensure that the buffer and palettes contain the previous
 frame's data.
 
 
+Documentation
+-------------
+
+* [Documentation][documentation].
+
+
 Author
 ------
 
 David Wang
+
+
+[animator-pro]: https://github.com/AnimatorPro/Animator-Pro
+[documentation]: https://docs.rs/flic/
+[travis-ci-img]: https://travis-ci.org/wangds/libflic.svg?branch=master
+[travis-ci-url]: https://travis-ci.org/wangds/libflic
+[version-img]: https://img.shields.io/crates/v/flic.svg
+[version-url]: https://crates.io/crates/flic

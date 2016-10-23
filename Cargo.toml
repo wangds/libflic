@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["David Wang <millimillenary@gmail.com>"]
 homepage = "https://github.com/wangds/libflic.git"
 repository = "https://github.com/wangds/libflic.git"
+documentation = "https://docs.rs/flic/"
 description = "Autodesk Animator FLI and Autodesk Animator Pro FLC file encoder and decoder."
 license = "MIT"
 readme = "README.md"
