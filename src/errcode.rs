@@ -24,6 +24,7 @@ pub enum FlicError {
 }
 
 impl fmt::Display for FlicError {
+    /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::FlicError::*;
         match *self {
