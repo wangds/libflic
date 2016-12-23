@@ -24,10 +24,10 @@ pub fn decode_fli_wrun(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut idx0 = 0;
 
-    let count = try!(r.read_u16::<LE>());
+    let count = r.read_u16::<LE>()?;
     for _ in 0..count {
         // Read a short, but cast to a signed byte.
-        let signed_length = (try!(r.read_u16::<LE>()) as i8) as i32;
+        let signed_length = (r.read_u16::<LE>()? as i8) as i32;
 
         if signed_length >= 0 {
             let start = idx0;
@@ -36,8 +36,8 @@ pub fn decode_fli_wrun(src: &[u8], dst: &mut RasterMut)
                 return Err(FlicError::Corrupted);
             }
 
-            let c0 = try!(r.read_u8());
-            let c1 = try!(r.read_u8());
+            let c0 = r.read_u8()?;
+            let c1 = r.read_u8()?;
             for e in &mut dst.buf[start..end].chunks_mut(2) {
                 e[0] = c0;
                 e[1] = c1;
@@ -51,7 +51,7 @@ pub fn decode_fli_wrun(src: &[u8], dst: &mut RasterMut)
                 return Err(FlicError::Corrupted);
             }
 
-            try!(r.read_exact(&mut dst.buf[start..end]));
+            r.read_exact(&mut dst.buf[start..end])?;
 
             idx0 = end;
         }

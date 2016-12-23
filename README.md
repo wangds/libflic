@@ -64,7 +64,7 @@ Open a FLIC file from disk.  This will read the FLIC metadata, such as
 animation dimensions and speed.  FlicFile will keep the file open.
 
 ```rust
-let flic = try!(FlicFile::open(Path::new("example.flc")));
+let flic = FlicFile::open(Path::new("example.flc"))?;
 ```
 
 Allocate the pixel data and palette data buffers to which we will

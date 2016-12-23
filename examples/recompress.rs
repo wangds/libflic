@@ -75,17 +75,17 @@ fn recompress(fin: &mut FlicFile, fout: &mut FlicFileWriter)
     let mut first = true;
 
     loop {
-        let res = try!(fin.read_next_frame(
-                &mut RasterMut::new(w, h, &mut buf_next, &mut pal_next)));
+        let res = fin.read_next_frame(
+                &mut RasterMut::new(w, h, &mut buf_next, &mut pal_next))?;
 
         if first {
-            try!(fout.write_next_frame(
+            fout.write_next_frame(
                     None,
-                    &Raster::new(w, h, &buf_next, &pal_next)));
+                    &Raster::new(w, h, &buf_next, &pal_next))?;
         } else {
-            try!(fout.write_next_frame(
+            fout.write_next_frame(
                     Some(&Raster::new(w, h, &buf_prev, &pal_prev)),
-                    &Raster::new(w, h, &buf_next, &pal_next)));
+                    &Raster::new(w, h, &buf_next, &pal_next))?;
         }
 
         if res.looped {

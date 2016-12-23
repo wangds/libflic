@@ -250,10 +250,9 @@ impl FlicFile {
             return Err(FlicError::NotARegularFile);
         }
 
-        let mut file = try!(File::open(filename));
-
-        let hdr = try!(read_flic_header(&mut file));
-        let frame_hdr = try!(read_frame_headers(&mut file, &hdr));
+        let mut file = File::open(filename)?;
+        let hdr = read_flic_header(&mut file)?;
+        let frame_hdr = read_frame_headers(&mut file, &hdr)?;
 
         Ok(FlicFile {
             hdr: hdr,
@@ -333,12 +332,12 @@ impl FlicFile {
                 self.hdr.w as usize, self.hdr.h as usize, dst);
 
         for chunk in self.frame_hdr[0].chunks.iter() {
-            try!(self.file.seek(SeekFrom::Start(chunk.offset)));
+            self.file.seek(SeekFrom::Start(chunk.offset))?;
 
             let mut buf = vec![0; chunk.size as usize];
-            try!(self.file.read_exact(&mut buf));
+            self.file.read_exact(&mut buf)?;
 
-            let done = try!(pstamp.feed(chunk.magic, &buf));
+            let done = pstamp.feed(chunk.magic, &buf)?;
             if done {
                 break;
             }
@@ -384,12 +383,12 @@ impl FlicFile {
 
         let frame = &self.frame_hdr[self.frame];
         for chunk in frame.chunks.iter() {
-            try!(self.file.seek(SeekFrom::Start(chunk.offset)));
+            self.file.seek(SeekFrom::Start(chunk.offset))?;
 
             let mut buf = vec![0; chunk.size as usize];
-            try!(self.file.read_exact(&mut buf));
+            self.file.read_exact(&mut buf)?;
 
-            try!(decode_chunk(chunk.magic, &buf, dst));
+            decode_chunk(chunk.magic, &buf, dst)?;
 
             res.palette_updated = res.palette_updated
                     || chunk_modifies_palette(chunk.magic);
@@ -429,10 +428,10 @@ impl FlicFileWriter {
     /// ```
     pub fn create(filename: &Path, w: u16, h: u16, speed_msec: u32)
             -> FlicResult<Self> {
-        let mut file = try!(File::create(filename));
+        let mut file = File::create(filename)?;
 
         // Reserve space for header.
-        try!(file.write_all(&[0; SIZE_OF_FLIC_HEADER]));
+        file.write_all(&[0; SIZE_OF_FLIC_HEADER])?;
 
         let jiffy_speed = min((speed_msec as u64) * 70 / 1000, ::std::u16::MAX as u64) as u16;
 
@@ -474,10 +473,10 @@ impl FlicFileWriter {
     /// ```
     pub fn create_fli(filename: &Path, speed_jiffies: u16)
             -> FlicResult<Self> {
-        let mut file = try!(File::create(filename));
+        let mut file = File::create(filename)?;
 
         // Reserve space for header.
-        try!(file.write_all(&[0; SIZE_OF_FLIC_HEADER]));
+        file.write_all(&[0; SIZE_OF_FLIC_HEADER])?;
 
         let hdr = FlicHeader {
             magic: FLIH_MAGIC,
@@ -542,22 +541,22 @@ impl FlicFileWriter {
             if self.hdr.frame_count == 0 {
                 return Err(FlicError::Corrupted);
             } else if self.hdr.frame_count == 1 {
-                self.offset_frame2 = try!(file.seek(SeekFrom::Current(0)));
-                try!(write_empty_frame(&mut file));
+                self.offset_frame2 = file.seek(SeekFrom::Current(0))?;
+                write_empty_frame(&mut file)?;
             } else {
                 self.hdr.frame_count = self.hdr.frame_count - 1;
             }
 
-            let size = try!(file.seek(SeekFrom::Current(0)));
+            let size = file.seek(SeekFrom::Current(0))?;
             if size > ::std::u32::MAX as u64 {
                 return Err(FlicError::ExceededLimit);
             }
 
             self.hdr.size = size as u32;
-            try!(file.seek(SeekFrom::Start(0)));
-            try!(write_flic_header(
+            file.seek(SeekFrom::Start(0))?;
+            write_flic_header(
                     &self.hdr, self.offset_frame1, self.offset_frame2,
-                    &mut file));
+                    &mut file)?;
 
             Ok(())
         } else {
@@ -608,9 +607,9 @@ impl FlicFileWriter {
             }
 
             if self.hdr.frame_count == 0 {
-                self.offset_frame1 = try!(file.seek(SeekFrom::Current(0)));
+                self.offset_frame1 = file.seek(SeekFrom::Current(0))?;
             } else if self.hdr.frame_count == 1 {
-                self.offset_frame2 = try!(file.seek(SeekFrom::Current(0)));
+                self.offset_frame2 = file.seek(SeekFrom::Current(0))?;
             }
 
             let prev = if self.hdr.frame_count == 0 {
@@ -619,8 +618,8 @@ impl FlicFileWriter {
                 prev
             };
 
-            try!(write_next_frame(self.hdr.magic, self.hdr.frame_count,
-                    prev, next, &mut file));
+            write_next_frame(self.hdr.magic, self.hdr.frame_count,
+                    prev, next, &mut file)?;
             self.hdr.frame_count = self.hdr.frame_count + 1;
 
             Ok(())
@@ -646,11 +645,11 @@ impl Drop for FlicFileWriter {
 fn read_flic_header(file: &mut File)
         -> FlicResult<FlicHeader> {
     let mut buf = [0; SIZE_OF_FLIC_HEADER];
-    try!(file.read_exact(&mut buf));
+    file.read_exact(&mut buf)?;
 
     let mut r = Cursor::new(&buf[..]);
-    let size = try!(r.read_u32::<LE>());
-    let magic = try!(r.read_u16::<LE>());
+    let size = r.read_u32::<LE>()?;
+    let magic = r.read_u16::<LE>()?;
 
     match magic {
         FLIH_MAGIC => read_fli_header(&mut r, size, magic),
@@ -665,12 +664,12 @@ fn read_fli_header(
         -> FlicResult<FlicHeader> {
     assert_eq!(magic, FLIH_MAGIC);
 
-    let frame_count = try!(r.read_u16::<LE>());
-    let width = try!(r.read_u16::<LE>());
-    let height = try!(r.read_u16::<LE>());
-    let _bpp = try!(r.read_u16::<LE>());
-    let _flags = try!(r.read_u16::<LE>());
-    let jiffy_speed = try!(r.read_u16::<LE>());
+    let frame_count = r.read_u16::<LE>()?;
+    let width = r.read_u16::<LE>()?;
+    let height = r.read_u16::<LE>()?;
+    let _bpp = r.read_u16::<LE>()?;
+    let _flags = r.read_u16::<LE>()?;
+    let jiffy_speed = r.read_u16::<LE>()?;
 
     match r.seek(SeekFrom::Current(110)) {
         Ok(128) => (),
@@ -708,22 +707,22 @@ fn read_flc_header(
         -> FlicResult<FlicHeader> {
     assert_eq!(magic, FLIHR_MAGIC);
 
-    let frame_count = try!(r.read_u16::<LE>());
-    let width = try!(r.read_u16::<LE>());
-    let height = try!(r.read_u16::<LE>());
-    let _bpp = try!(r.read_u16::<LE>());
-    let _flags = try!(r.read_u16::<LE>());
-    let speed = try!(r.read_u32::<LE>());
-    try!(r.seek(SeekFrom::Current(2)));
-    let created = try!(r.read_u32::<LE>());
-    let creator = try!(r.read_u32::<LE>());
-    let updated = try!(r.read_u32::<LE>());
-    let updater = try!(r.read_u32::<LE>());
-    let mut aspect_x = try!(r.read_u16::<LE>());
-    let mut aspect_y = try!(r.read_u16::<LE>());
-    try!(r.seek(SeekFrom::Current(38)));
-    let _oframe1 = try!(r.read_u32::<LE>());
-    let _oframe2 = try!(r.read_u32::<LE>());
+    let frame_count = r.read_u16::<LE>()?;
+    let width = r.read_u16::<LE>()?;
+    let height = r.read_u16::<LE>()?;
+    let _bpp = r.read_u16::<LE>()?;
+    let _flags = r.read_u16::<LE>()?;
+    let speed = r.read_u32::<LE>()?;
+    r.seek(SeekFrom::Current(2))?;
+    let created = r.read_u32::<LE>()?;
+    let creator = r.read_u32::<LE>()?;
+    let updated = r.read_u32::<LE>()?;
+    let updater = r.read_u32::<LE>()?;
+    let mut aspect_x = r.read_u16::<LE>()?;
+    let mut aspect_y = r.read_u16::<LE>()?;
+    r.seek(SeekFrom::Current(38))?;
+    let _oframe1 = r.read_u32::<LE>()?;
+    let _oframe2 = r.read_u32::<LE>()?;
 
     match r.seek(SeekFrom::Current(40)) {
         Ok(128) => (),
@@ -771,14 +770,14 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
         let mut magic;
         let mut num_chunks;
 
-        try!(file.seek(SeekFrom::Start(offset)));
-        try!(file.read_exact(&mut buf));
+        file.seek(SeekFrom::Start(offset))?;
+        file.read_exact(&mut buf)?;
 
         {
             let mut r = Cursor::new(&buf[..]);
-            size = try!(r.read_u32::<LE>());
-            magic = try!(r.read_u16::<LE>());
-            num_chunks = try!(r.read_u16::<LE>()) as usize;
+            size = r.read_u32::<LE>()?;
+            magic = r.read_u16::<LE>()?;
+            num_chunks = r.read_u16::<LE>()? as usize;
 
             if size < (SIZE_OF_FLIC_FRAME as u32)
                     || offset + (size as u64) > (hdr.size as u64) {
@@ -789,13 +788,13 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
         if frame_num == 0 && magic == FCID_PREFIX {
             offset = offset + size as u64;
 
-            try!(file.seek(SeekFrom::Start(offset)));
-            try!(file.read_exact(&mut buf));
+            file.seek(SeekFrom::Start(offset))?;
+            file.read_exact(&mut buf)?;
 
             let mut r = Cursor::new(&buf[..]);
-            size = try!(r.read_u32::<LE>());
-            magic = try!(r.read_u16::<LE>());
-            num_chunks = try!(r.read_u16::<LE>()) as usize;
+            size = r.read_u32::<LE>()?;
+            magic = r.read_u16::<LE>()?;
+            num_chunks = r.read_u16::<LE>()? as usize;
 
             if size < (SIZE_OF_FLIC_FRAME as u32)
                     || offset + (size as u64) > (hdr.size as u64) {
@@ -807,8 +806,8 @@ fn read_frame_headers(file: &mut File, hdr: &FlicHeader)
             return Err(FlicError::BadMagic);
         }
 
-        let chunks = try!(read_chunk_headers(file, hdr,
-                frame_num, offset, size, num_chunks));
+        let chunks = read_chunk_headers(file, hdr,
+                frame_num, offset, size, num_chunks)?;
         assert_eq!(chunks.len(), num_chunks);
 
         // Note: Animator forces chunk sizes to be even.  However,
@@ -844,14 +843,14 @@ fn read_chunk_headers(file: &mut File, hdr: &FlicHeader,
     let mut offset = frame_offset + SIZE_OF_FLIC_FRAME as u64;
 
     for _ in 0..num_chunks {
-        try!(file.seek(SeekFrom::Start(offset)));
+        file.seek(SeekFrom::Start(offset))?;
 
         let mut buf = [0; SIZE_OF_CHUNK];
-        try!(file.read_exact(&mut buf));
+        file.read_exact(&mut buf)?;
 
         let mut r = Cursor::new(&buf[..]);
-        let size = try!(r.read_u32::<LE>());
-        let magic = try!(r.read_u16::<LE>());
+        let size = r.read_u32::<LE>()?;
+        let magic = r.read_u16::<LE>()?;
 
         if !(SIZE_OF_CHUNK as u32 <= size && size <= frame_size) {
             return Err(FlicError::Corrupted);
@@ -920,14 +919,14 @@ fn write_fli_header<W: Write + Seek>(
         -> FlicResult<()> {
     let depth = 8;
     let flags = 0;
-    try!(w.write_u32::<LE>(hdr.size));
-    try!(w.write_u16::<LE>(FLIH_MAGIC));
-    try!(w.write_u16::<LE>(hdr.frame_count));
-    try!(w.write_u16::<LE>(hdr.w));
-    try!(w.write_u16::<LE>(hdr.h));
-    try!(w.write_u16::<LE>(depth));
-    try!(w.write_u16::<LE>(flags));
-    try!(w.write_u16::<LE>(hdr.speed_jiffies));
+    w.write_u32::<LE>(hdr.size)?;
+    w.write_u16::<LE>(FLIH_MAGIC)?;
+    w.write_u16::<LE>(hdr.frame_count)?;
+    w.write_u16::<LE>(hdr.w)?;
+    w.write_u16::<LE>(hdr.h)?;
+    w.write_u16::<LE>(depth)?;
+    w.write_u16::<LE>(flags)?;
+    w.write_u16::<LE>(hdr.speed_jiffies)?;
     Ok(())
 }
 
@@ -937,29 +936,29 @@ fn write_flc_header<W: Write + Seek>(
     let depth = 8;
     let flags = 3;
 
-    try!(w.write_u32::<LE>(hdr.size));
-    try!(w.write_u16::<LE>(FLIHR_MAGIC));
-    try!(w.write_u16::<LE>(hdr.frame_count));
-    try!(w.write_u16::<LE>(hdr.w));
-    try!(w.write_u16::<LE>(hdr.h));
-    try!(w.write_u16::<LE>(depth));
-    try!(w.write_u16::<LE>(flags));
-    try!(w.write_u32::<LE>(hdr.speed_msec));
+    w.write_u32::<LE>(hdr.size)?;
+    w.write_u16::<LE>(FLIHR_MAGIC)?;
+    w.write_u16::<LE>(hdr.frame_count)?;
+    w.write_u16::<LE>(hdr.w)?;
+    w.write_u16::<LE>(hdr.h)?;
+    w.write_u16::<LE>(depth)?;
+    w.write_u16::<LE>(flags)?;
+    w.write_u32::<LE>(hdr.speed_msec)?;
 
-    try!(w.seek(SeekFrom::Current(2))); // reserved
-    try!(w.write_u32::<LE>(hdr.created));
-    try!(w.write_u32::<LE>(hdr.creator));
-    try!(w.write_u32::<LE>(hdr.updated));
-    try!(w.write_u32::<LE>(hdr.updater));
-    try!(w.write_u16::<LE>(hdr.aspect_x));
-    try!(w.write_u16::<LE>(hdr.aspect_y));
-    try!(w.seek(SeekFrom::Current(38)));
+    w.seek(SeekFrom::Current(2))?; // reserved
+    w.write_u32::<LE>(hdr.created)?;
+    w.write_u32::<LE>(hdr.creator)?;
+    w.write_u32::<LE>(hdr.updated)?;
+    w.write_u32::<LE>(hdr.updater)?;
+    w.write_u16::<LE>(hdr.aspect_x)?;
+    w.write_u16::<LE>(hdr.aspect_y)?;
+    w.seek(SeekFrom::Current(38))?;
 
     // If the offsets are too big, then leave them as 0 and hope other
     // libraries will compute it themselves.
     if offset_frame1 < offset_frame2 && offset_frame2 <= ::std::u32::MAX as u64 {
-        try!(w.write_u32::<LE>(offset_frame1 as u32));
-        try!(w.write_u32::<LE>(offset_frame2 as u32));
+        w.write_u32::<LE>(offset_frame1 as u32)?;
+        w.write_u32::<LE>(offset_frame2 as u32)?;
     }
 
     Ok(())
@@ -969,10 +968,10 @@ fn write_flc_header<W: Write + Seek>(
 fn write_empty_frame<W: Write>(
         w: &mut W)
         -> FlicResult<()> {
-    try!(w.write_u32::<LE>(SIZE_OF_FLIC_FRAME as u32));
-    try!(w.write_u16::<LE>(FCID_FRAME));
-    try!(w.write_u16::<LE>(0)); // chunks
-    try!(w.write_all(&[0; 8]));
+    w.write_u32::<LE>(SIZE_OF_FLIC_FRAME as u32)?;
+    w.write_u16::<LE>(FCID_FRAME)?;
+    w.write_u16::<LE>(0)?; // chunks
+    w.write_all(&[0; 8])?;
     Ok(())
 }
 
@@ -981,17 +980,17 @@ fn write_next_frame<W: Write + Seek>(
         flic_magic: u16, frame_count: u16,
         prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
 
     // Reserve space for chunk.
-    try!(w.write_all(&[0; SIZE_OF_FLIC_FRAME]));
+    w.write_all(&[0; SIZE_OF_FLIC_FRAME])?;
 
     let size_pstamp =
         if flic_magic != FLIH_MAGIC && frame_count == 0 {
             match write_pstamp_data(next, w) {
                 Ok(size) => size,
                 Err(_) => {
-                    try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_FLIC_FRAME as u64)));
+                    w.seek(SeekFrom::Start(pos0 + SIZE_OF_FLIC_FRAME as u64))?;
                     0
                 },
             }
@@ -999,17 +998,17 @@ fn write_next_frame<W: Write + Seek>(
             0
         };
 
-    let size_col = try!(write_color_data(flic_magic, prev, next, w));
-    let size_pix = try!(write_pixel_data(flic_magic, prev, next, w));
+    let size_col = write_color_data(flic_magic, prev, next, w)?;
+    let size_pix = write_pixel_data(flic_magic, prev, next, w)?;
     let size = SIZE_OF_FLIC_FRAME + size_pstamp + size_col + size_pix;
 
     if size > ::std::u32::MAX as usize {
         return Err(FlicError::ExceededLimit);
     }
 
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos1 = w.seek(SeekFrom::Current(0))?;
 
-    try!(w.seek(SeekFrom::Start(pos0)));
+    w.seek(SeekFrom::Start(pos0))?;
     if size > 0 {
         let num_chunks
             = if size_pstamp > 0 { 1 } else { 0 }
@@ -1017,10 +1016,10 @@ fn write_next_frame<W: Write + Seek>(
             + if size_pix > 0 { 1 } else { 0 };
 
         assert_eq!(size, (pos1 - pos0) as usize);
-        try!(w.write_u32::<LE>(size as u32));
-        try!(w.write_u16::<LE>(FCID_FRAME));
-        try!(w.write_u16::<LE>(num_chunks));
-        try!(w.seek(SeekFrom::Start(pos1)));
+        w.write_u32::<LE>(size as u32)?;
+        w.write_u16::<LE>(FCID_FRAME)?;
+        w.write_u16::<LE>(num_chunks)?;
+        w.seek(SeekFrom::Start(pos1))?;
         Ok(size)
     } else {
         Ok(0)
@@ -1031,17 +1030,17 @@ fn write_next_frame<W: Write + Seek>(
 fn write_color_data<W: Write + Seek>(
         flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
 
     // Reserve space for chunk.
-    try!(w.write_all(&[0; SIZE_OF_CHUNK]));
+    w.write_all(&[0; SIZE_OF_CHUNK])?;
 
     let (chunk_size, chunk_magic) =
         if flic_magic == FLIH_MAGIC {
-            let size = try!(encode_fli_color64(prev, next, w));
+            let size = encode_fli_color64(prev, next, w)?;
             (size, FLI_COLOR64)
         } else {
-            let size = try!(encode_fli_color256(prev, next, w));
+            let size = encode_fli_color256(prev, next, w)?;
             (size, FLI_COLOR256)
         };
 
@@ -1049,13 +1048,13 @@ fn write_color_data<W: Write + Seek>(
         return Err(FlicError::ExceededLimit);
     }
 
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos1 = w.seek(SeekFrom::Current(0))?;
 
-    try!(w.seek(SeekFrom::Start(pos0)));
+    w.seek(SeekFrom::Start(pos0))?;
     if chunk_size > 0 {
-        try!(w.write_u32::<LE>((SIZE_OF_CHUNK + chunk_size) as u32));
-        try!(w.write_u16::<LE>(chunk_magic));
-        try!(w.seek(SeekFrom::Start(pos1)));
+        w.write_u32::<LE>((SIZE_OF_CHUNK + chunk_size) as u32)?;
+        w.write_u16::<LE>(chunk_magic)?;
+        w.seek(SeekFrom::Start(pos1))?;
         Ok(SIZE_OF_CHUNK + chunk_size)
     } else {
         Ok(0)
@@ -1066,10 +1065,10 @@ fn write_color_data<W: Write + Seek>(
 fn write_pixel_data<W: Write + Seek>(
         flic_magic: u16, prev: Option<&Raster>, next: &Raster, w: &mut W)
         -> FlicResult<usize> {
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
 
     // Reserve space for chunk.
-    try!(w.write_all(&[0; SIZE_OF_CHUNK]));
+    w.write_all(&[0; SIZE_OF_CHUNK])?;
 
     let mut chunk_size = next.w * next.h;
     let mut chunk_magic = FLI_COPY;
@@ -1087,7 +1086,7 @@ fn write_pixel_data<W: Write + Seek>(
         match encode_fli_lc(prev.unwrap(), next, w) {
             Ok(size) =>
                 if size == 0 {
-                    try!(w.seek(SeekFrom::Start(pos0)));
+                    w.seek(SeekFrom::Start(pos0))?;
                     return Ok(0);
                 } else if size < chunk_size {
                     chunk_size = size;
@@ -1099,7 +1098,7 @@ fn write_pixel_data<W: Write + Seek>(
         }
 
         if chunk_magic != FLI_LC {
-            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+            w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64))?;
         }
     }
 
@@ -1117,7 +1116,7 @@ fn write_pixel_data<W: Write + Seek>(
         }
 
         if chunk_magic != FLI_SS2 {
-            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+            w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64))?;
         }
     }
 
@@ -1135,27 +1134,27 @@ fn write_pixel_data<W: Write + Seek>(
         }
 
         if chunk_magic != FLI_BRUN {
-            try!(w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64)));
+            w.seek(SeekFrom::Start(pos0 + SIZE_OF_CHUNK as u64))?;
         }
     }
 
     // Try FLI_COPY.
     if chunk_magic == FLI_COPY {
-        chunk_size = try!(encode_fli_copy(next, w));
+        chunk_size = encode_fli_copy(next, w)?;
         chunk_magic = FLI_COPY;
     }
 
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos1 = w.seek(SeekFrom::Current(0))?;
     assert_eq!(SIZE_OF_CHUNK + chunk_size, (pos1 - pos0) as usize);
 
-    try!(w.seek(SeekFrom::Start(pos0)));
+    w.seek(SeekFrom::Start(pos0))?;
     if pos1 - pos0 > ::std::u32::MAX as u64 {
         return Err(FlicError::ExceededLimit);
     }
 
-    try!(w.write_u32::<LE>((pos1 - pos0) as u32));
-    try!(w.write_u16::<LE>(chunk_magic));
-    try!(w.seek(SeekFrom::Start(pos1)));
+    w.write_u32::<LE>((pos1 - pos0) as u32)?;
+    w.write_u16::<LE>(chunk_magic)?;
+    w.seek(SeekFrom::Start(pos1))?;
 
     Ok((pos1 - pos0) as usize)
 }

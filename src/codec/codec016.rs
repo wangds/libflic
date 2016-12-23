@@ -73,7 +73,7 @@ pub fn encode_fli_copy<W: Write>(
     for row in next.buf[start..end].chunks(next.stride) {
         let start = next.x;
         let end = start + next.w;
-        try!(w.write_all(&row[start..end]));
+        w.write_all(&row[start..end])?;
     }
 
     Ok(next.w * next.h)

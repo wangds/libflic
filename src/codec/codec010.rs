@@ -22,12 +22,12 @@ pub fn decode_fli_sbsrsc(src: &[u8], dst: &mut RasterMut)
     }
 
     let mut r = Cursor::new(src);
-    let mut idx0 = try!(r.read_u16::<LE>()) as usize;
+    let mut idx0 = r.read_u16::<LE>()? as usize;
 
-    let count = try!(r.read_u16::<LE>());
+    let count = r.read_u16::<LE>()?;
     for _ in 0..count {
-        let nskip = try!(r.read_u8()) as usize;
-        let signed_length = try!(r.read_i8()) as i32;
+        let nskip = r.read_u8()? as usize;
+        let signed_length = r.read_i8()? as i32;
 
         if signed_length >= 0 {
             let start = idx0 + nskip;
@@ -36,7 +36,7 @@ pub fn decode_fli_sbsrsc(src: &[u8], dst: &mut RasterMut)
                 return Err(FlicError::Corrupted);
             }
 
-            try!(r.read_exact(&mut dst.buf[start..end]));
+            r.read_exact(&mut dst.buf[start..end])?;
 
             idx0 = end;
         } else {
@@ -46,7 +46,7 @@ pub fn decode_fli_sbsrsc(src: &[u8], dst: &mut RasterMut)
                 return Err(FlicError::Corrupted);
             }
 
-            let c = try!(r.read_u8());
+            let c = r.read_u8()?;
             for e in &mut dst.buf[start..end] {
                 *e = c;
             }

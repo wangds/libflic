@@ -52,18 +52,18 @@ enum LcOp {
 pub fn decode_fli_lc(src: &[u8], dst: &mut RasterMut)
         -> FlicResult<()> {
     let mut r = Cursor::new(src);
-    let y0 = try!(r.read_u16::<LE>()) as usize;
-    let hh = try!(r.read_u16::<LE>()) as usize;
+    let y0 = r.read_u16::<LE>()? as usize;
+    let hh = r.read_u16::<LE>()? as usize;
 
     let start = dst.stride * (dst.y + y0);
     let end = dst.stride * (dst.y + y0 + hh);
     for row in dst.buf[start..end].chunks_mut(dst.stride) {
-        let count = try!(r.read_u8());
+        let count = r.read_u8()?;
         let mut x0 = dst.x;
 
         for _ in 0..count {
-            let nskip = try!(r.read_u8()) as usize;
-            let signed_length = try!(r.read_i8()) as i32;
+            let nskip = r.read_u8()? as usize;
+            let signed_length = r.read_i8()? as i32;
 
             if signed_length >= 0 {
                 let start = x0 + nskip;
@@ -72,7 +72,7 @@ pub fn decode_fli_lc(src: &[u8], dst: &mut RasterMut)
                     return Err(FlicError::Corrupted);
                 }
 
-                try!(r.read_exact(&mut row[start..end]));
+                r.read_exact(&mut row[start..end])?;
 
                 x0 = end;
             } else {
@@ -82,7 +82,7 @@ pub fn decode_fli_lc(src: &[u8], dst: &mut RasterMut)
                     return Err(FlicError::Corrupted);
                 }
 
-                let c = try!(r.read_u8());
+                let c = r.read_u8()?;
                 for e in &mut row[start..end] {
                     *e = c;
                 }
@@ -134,9 +134,9 @@ pub fn encode_fli_lc<W: Write + Seek>(
 
     // Reserve space for y0, hh.
     let max_size = (next.w * next.h) as u64;
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
-    try!(w.write_u16::<LE>(y0 as u16));
-    try!(w.write_u16::<LE>(hh as u16));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
+    w.write_u16::<LE>(y0 as u16)?;
+    w.write_u16::<LE>(hh as u16)?;
 
     let prev_start = prev.stride * y0;
     let prev_end = prev.stride * y1;
@@ -149,8 +149,8 @@ pub fn encode_fli_lc<W: Write + Seek>(
         let n = &n[next.x..(next.x + next.w)];
 
         // Reserve space for count.
-        let pos1 = try!(w.seek(SeekFrom::Current(0)));
-        try!(w.write_u8(0));
+        let pos1 = w.seek(SeekFrom::Current(0))?;
+        w.write_u8(0)?;
 
         let mut state = LcOp::Skip(0);
         let mut count = 0;
@@ -163,13 +163,13 @@ pub fn encode_fli_lc<W: Write + Seek>(
             } else {
                 let new_state = convert_packet(g);
 
-                count = try!(write_packet(state, count, n, w));
+                count = write_packet(state, count, n, w)?;
 
                 // Insert Skip(0) between Memcpy and Memset operations.
                 match (state, new_state) {
                     (LcOp::Skip(_), _) => {},
                     (_, LcOp::Skip(_)) => {},
-                    _ => count = try!(write_packet(LcOp::Skip(0), count, n, w)),
+                    _ => count = write_packet(LcOp::Skip(0), count, n, w)?,
                 }
 
                 if count > 2 * ::std::u8::MAX as usize {
@@ -182,7 +182,7 @@ pub fn encode_fli_lc<W: Write + Seek>(
 
         if let LcOp::Skip(_) = state {
         } else {
-            count = try!(write_packet(state, count, n, w));
+            count = write_packet(state, count, n, w)?;
         }
 
         assert!(count % 2 == 0);
@@ -190,20 +190,20 @@ pub fn encode_fli_lc<W: Write + Seek>(
             return Err(FlicError::ExceededLimit);
         }
 
-        let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        let pos2 = w.seek(SeekFrom::Current(0))?;
         if pos2 - pos0 > max_size {
             return Err(FlicError::ExceededLimit);
         }
 
-        try!(w.seek(SeekFrom::Start(pos1)));
-        try!(w.write_u8((count / 2) as u8));
-        try!(w.seek(SeekFrom::Start(pos2)));
+        w.seek(SeekFrom::Start(pos1))?;
+        w.write_u8((count / 2) as u8)?;
+        w.seek(SeekFrom::Start(pos2))?;
     }
 
     // If odd number, pad it to be even.
-    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let mut pos1 = w.seek(SeekFrom::Current(0))?;
     if (pos1 - pos0) % 2 == 1 {
-        try!(w.write_u8(0));
+        w.write_u8(0)?;
         pos1 = pos1 + 1;
     }
 
@@ -286,45 +286,45 @@ fn write_packet<W: Write>(
         LcOp::Skip(mut len) => {
             let max = ::std::u8::MAX as usize;
             while len > max {
-                try!(w.write_u8(max as u8));
-                try!(w.write_i8(0)); // copy 0
+                w.write_u8(max as u8)?;
+                w.write_i8(0)?; // copy 0
 
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_u8(len as u8));
+            w.write_u8(len as u8)?;
             count = count + 1;
         },
         LcOp::Memset(idx, mut len) => {
             let max = (-(::std::i8::MIN as i32)) as usize;
             while len > max {
-                try!(w.write_i8(max as i8));
-                try!(w.write_u8(buf[idx]));
-                try!(w.write_u8(0)); // skip 0
+                w.write_i8(max as i8)?;
+                w.write_u8(buf[idx])?;
+                w.write_u8(0)?; // skip 0
 
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_i8(-(len as i32) as i8));
-            try!(w.write_u8(buf[idx]));
+            w.write_i8(-(len as i32) as i8)?;
+            w.write_u8(buf[idx])?;
             count = count + 1;
         },
         LcOp::Memcpy(mut idx, mut len) => {
             let max = ::std::i8::MAX as usize;
             while len > max {
-                try!(w.write_i8(max as i8));
-                try!(w.write_all(&buf[idx..(idx + max)]));
-                try!(w.write_u8(0)); // skip 0
+                w.write_i8(max as i8)?;
+                w.write_all(&buf[idx..(idx + max)])?;
+                w.write_u8(0)?; // skip 0
 
                 idx = idx + max;
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_u8(len as u8));
-            try!(w.write_all(&buf[idx..(idx + len)]));
+            w.write_u8(len as u8)?;
+            w.write_all(&buf[idx..(idx + len)])?;
             count = count + 1;
         },
     }

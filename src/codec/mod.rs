@@ -96,16 +96,16 @@ pub fn chunk_modifies_palette(magic: u16)
 pub fn decode_chunk(magic: u16, buf: &[u8], dst: &mut RasterMut)
         -> FlicResult<()> {
     match magic {
-        FLI_WRUN => try!(decode_fli_wrun(&buf, dst)),
-        FLI_COLOR256 => try!(decode_fli_color256(&buf, dst)),
-        FLI_SS2 => try!(decode_fli_ss2(&buf, dst)),
-        FLI_SBSRSC => try!(decode_fli_sbsrsc(&buf, dst)),
-        FLI_COLOR64 => try!(decode_fli_color64(&buf, dst)),
-        FLI_LC => try!(decode_fli_lc(&buf, dst)),
+        FLI_WRUN => decode_fli_wrun(&buf, dst)?,
+        FLI_COLOR256 => decode_fli_color256(&buf, dst)?,
+        FLI_SS2 => decode_fli_ss2(&buf, dst)?,
+        FLI_SBSRSC => decode_fli_sbsrsc(&buf, dst)?,
+        FLI_COLOR64 => decode_fli_color64(&buf, dst)?,
+        FLI_LC => decode_fli_lc(&buf, dst)?,
         FLI_BLACK => decode_fli_black(dst),
         FLI_ICOLORS => decode_fli_icolors(dst),
-        FLI_BRUN => try!(decode_fli_brun(&buf, dst)),
-        FLI_COPY => try!(decode_fli_copy(&buf, dst)),
+        FLI_BRUN => decode_fli_brun(&buf, dst)?,
+        FLI_COPY => decode_fli_copy(&buf, dst)?,
 
         // Postage stamps should not be decoded in the same loop as
         // the main animation; they have different sizes and work on

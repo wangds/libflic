@@ -51,10 +51,10 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
         let mut x0 = 0;
 
         // Skip obsolete count byte.
-        let _count = try!(r.read_u8());
+        let _count = r.read_u8()?;
 
         while x0 < row.len() {
-            let signed_length = try!(r.read_i8()) as i32;
+            let signed_length = r.read_i8()? as i32;
 
             if signed_length >= 0 {
                 let start = x0;
@@ -63,7 +63,7 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
                     return Err(FlicError::Corrupted);
                 }
 
-                let c = try!(r.read_u8());
+                let c = r.read_u8()?;
                 for e in &mut row[start..end] {
                     *e = c;
                 }
@@ -76,7 +76,7 @@ pub fn decode_fli_brun(src: &[u8], dst: &mut RasterMut)
                     return Err(FlicError::Corrupted);
                 }
 
-                try!(r.read_exact(&mut row[start..end]));
+                r.read_exact(&mut row[start..end])?;
 
                 x0 = end;
             }
@@ -115,13 +115,13 @@ pub fn decode_fps_brun(
         }
 
         while sy < next_y {
-            try!(decode_fps_brun_skip(&mut r, src_w));
+            decode_fps_brun_skip(&mut r, src_w)?;
             sy = sy + 1;
         }
 
         let start = dst.stride * (dst.y + dy) + dst.x;
         let end = start + dst.w;
-        try!(decode_fps_brun_line(&mut r, src_w, dst.w, &mut dst.buf[start..end]));
+        decode_fps_brun_line(&mut r, src_w, dst.w, &mut dst.buf[start..end])?;
         sy = sy + 1;
     }
 
@@ -134,19 +134,19 @@ fn decode_fps_brun_skip(
     let mut sx = 0;
 
     // Skip obsolete count byte.
-    let _count = try!(r.read_u8());
+    let _count = r.read_u8()?;
 
     while sx < sw {
-        let signed_length = try!(r.read_i8()) as i32;
+        let signed_length = r.read_i8()? as i32;
 
         if signed_length >= 0 {
             let end = sx + signed_length as usize;
-            try!(r.seek(SeekFrom::Current(1)));
+            r.seek(SeekFrom::Current(1))?;
 
             sx = end;
         } else {
             let end = sx + (-signed_length) as usize;
-            try!(r.seek(SeekFrom::Current((-signed_length) as i64)));
+            r.seek(SeekFrom::Current((-signed_length) as i64))?;
 
             sx = end;
         }
@@ -163,10 +163,10 @@ fn decode_fps_brun_line(
     let mut sx = 0;
 
     // Skip obsolete count byte.
-    let _count = try!(r.read_u8());
+    let _count = r.read_u8()?;
 
     while sx < sw {
-        let signed_length = try!(r.read_i8()) as i32;
+        let signed_length = r.read_i8()? as i32;
 
         // Each iteration processes
         //
@@ -177,7 +177,7 @@ fn decode_fps_brun_line(
 
         if signed_length >= 0 {
             let end = sx + signed_length as usize;
-            let c = try!(r.read_u8());
+            let c = r.read_u8()?;
 
             // Know src[sx..(sx + signed_length)] = c.
             while let Some(&(next_sx, next_dx)) = linscale.peek() {
@@ -192,7 +192,7 @@ fn decode_fps_brun_line(
             sx = end;
         } else {
             let end = sx + (-signed_length) as usize;
-            try!(r.read_exact(&mut buf[0..(-signed_length) as usize]));
+            r.read_exact(&mut buf[0..(-signed_length) as usize])?;
 
             // Know src[sx..(sx - signed_length)] = buf.
             while let Some(&(next_sx, next_dx)) = linscale.peek() {
@@ -216,49 +216,49 @@ pub fn encode_fli_brun<W: Write + Seek>(
         next: &Raster, w: &mut W)
         -> FlicResult<usize> {
     let max_size = (next.w * next.h) as u64;
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
 
     let start = next.stride * next.y;
     let end = next.stride * (next.y + next.h);
     for n in next.buf[start..end].chunks(next.stride) {
         let n = &n[next.x..(next.x + next.w)];
-        let pos1 = try!(w.seek(SeekFrom::Current(0)));
+        let pos1 = w.seek(SeekFrom::Current(0))?;
 
         // Dummy initial state.
         let mut state = Group::Same(0, 0);
         let mut count = 0;
 
         // Reserve space for count.
-        try!(w.write_u8(0));
+        w.write_u8(0)?;
 
         for g in GroupByValue::new(n) {
             if let Some(new_state) = combine_packets(state, g) {
                 state = new_state;
             } else {
-                count = try!(write_packet(state, count, n, w));
+                count = write_packet(state, count, n, w)?;
                 state = g;
             }
         }
 
-        count = try!(write_packet(state, count, n, w));
+        count = write_packet(state, count, n, w)?;
 
-        let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        let pos2 = w.seek(SeekFrom::Current(0))?;
         if pos2 - pos0 > max_size {
             return Err(FlicError::ExceededLimit);
         }
 
         // If count fits, then fill it in.
         if count <= ::std::u8::MAX as usize {
-            try!(w.seek(SeekFrom::Start(pos1)));
-            try!(w.write_u8(count as u8));
-            try!(w.seek(SeekFrom::Start(pos2)));
+            w.seek(SeekFrom::Start(pos1))?;
+            w.write_u8(count as u8)?;
+            w.seek(SeekFrom::Start(pos2))?;
         }
     }
 
     // If odd number, pad it to be even.
-    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let mut pos1 = w.seek(SeekFrom::Current(0))?;
     if (pos1 - pos0) % 2 == 1 {
-        try!(w.write_u8(0));
+        w.write_u8(0)?;
         pos1 = pos1 + 1;
     }
 
@@ -310,8 +310,8 @@ fn write_packet<W: Write>(
             let max = ::std::i8::MAX as usize;
             while len > 0 {
                 let l = min(len, max);
-                try!(w.write_i8(l as i8));
-                try!(w.write_u8(buf[idx]));
+                w.write_i8(l as i8)?;
+                w.write_u8(buf[idx])?;
 
                 len = len - l;
                 count = count + 1;
@@ -321,8 +321,8 @@ fn write_packet<W: Write>(
             let max = (-(::std::i8::MIN as i32)) as usize;
             while len > 0 {
                 let l = min(len, max);
-                try!(w.write_i8((-(l as i32)) as i8));
-                try!(w.write_all(&buf[idx..(idx + l)]));
+                w.write_i8((-(l as i32)) as i8)?;
+                w.write_all(&buf[idx..(idx + l)])?;
 
                 idx = idx + l;
                 len = len - l;

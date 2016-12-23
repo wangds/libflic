@@ -58,9 +58,9 @@ pub fn decode_fli_ss2(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut y = 0;
 
-    let mut h = try!(r.read_u16::<LE>());
+    let mut h = r.read_u16::<LE>()?;
     while y < dst.h && h > 0 {
-        let mut count = try!(r.read_u16::<LE>());
+        let mut count = r.read_u16::<LE>()?;
 
         if (count & (1 << 15)) != 0 {
             if (count & (1 << 14)) != 0 {
@@ -72,7 +72,7 @@ pub fn decode_fli_ss2(src: &[u8], dst: &mut RasterMut)
                 let idx = dst.stride * (dst.y + y) + (dst.x + dst.w - 1);
                 dst.buf[idx] = count as u8;
 
-                count = try!(r.read_u16::<LE>());
+                count = r.read_u16::<LE>()?;
                 if count == 0 {
                     y = y + 1;
                     h = h - 1;
@@ -87,8 +87,8 @@ pub fn decode_fli_ss2(src: &[u8], dst: &mut RasterMut)
         let mut x0 = dst.x;
 
         for _ in 0..count {
-            let nskip = try!(r.read_u8()) as usize;
-            let signed_length = try!(r.read_i8()) as i32;
+            let nskip = r.read_u8()? as usize;
+            let signed_length = r.read_i8()? as i32;
 
             if signed_length >= 0 {
                 let start = x0 + nskip;
@@ -97,14 +97,14 @@ pub fn decode_fli_ss2(src: &[u8], dst: &mut RasterMut)
                     return Err(FlicError::Corrupted);
                 }
 
-                try!(r.read_exact(&mut row[start..end]));
+                r.read_exact(&mut row[start..end])?;
 
                 x0 = end;
             } else {
                 let start = x0 + nskip;
                 let end = start + 2 * (-signed_length) as usize;
-                let c0 = try!(r.read_u8());
-                let c1 = try!(r.read_u8());
+                let c0 = r.read_u8()?;
+                let c1 = r.read_u8()?;
                 if end > row.len() {
                     return Err(FlicError::Corrupted);
                 }
@@ -135,8 +135,8 @@ pub fn encode_fli_ss2<W: Write + Seek>(
 
     // Reserve space for line_count.
     let max_size = (next.w * next.h) as u64;
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
-    try!(w.write_u16::<LE>(0));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
+    w.write_u16::<LE>(0)?;
 
     let prev_start = prev.stride * prev.y;
     let prev_end = prev.stride * (prev.y + prev.h);
@@ -164,11 +164,11 @@ pub fn encode_fli_ss2<W: Write + Seek>(
         if skip_count > 0 {
             let max = -((0b1100_0000_0000_0000u16) as i16); // max = +16384
             while skip_count > max as usize {
-                try!(w.write_i16::<LE>(-max));
+                w.write_i16::<LE>(-max)?;
                 skip_count = skip_count - max as usize;
             }
 
-            try!(w.write_i16::<LE>(-(skip_count as i16)));
+            w.write_i16::<LE>(-(skip_count as i16))?;
             skip_count = 0;
         }
 
@@ -211,18 +211,18 @@ pub fn encode_fli_ss2<W: Write + Seek>(
         if let SS2Op::Skip(_) = state {
         } else if let SS2Op::SetEnd(idx) = state {
             // Note: this must be followed by a packet count word.
-            try!(w.write_u8(n[idx])); // low byte
-            try!(w.write_u8(0b1000_0000)); // high byte
+            w.write_u8(n[idx])?; // low byte
+            w.write_u8(0b1000_0000)?; // high byte
         } else {
             packets.push(state);
         }
 
         // Reserve space for count.
-        let pos1 = try!(w.seek(SeekFrom::Current(0)));
-        try!(w.write_i16::<LE>(0));
+        let pos1 = w.seek(SeekFrom::Current(0))?;
+        w.write_i16::<LE>(0)?;
 
         for g in packets {
-            count = try!(write_packet(g, count, n, w));
+            count = write_packet(g, count, n, w)?;
         }
 
         assert!(count % 2 == 0);
@@ -230,24 +230,24 @@ pub fn encode_fli_ss2<W: Write + Seek>(
             return Err(FlicError::ExceededLimit);
         }
 
-        let pos2 = try!(w.seek(SeekFrom::Current(0)));
+        let pos2 = w.seek(SeekFrom::Current(0))?;
         if pos2 - pos0 > max_size {
             return Err(FlicError::ExceededLimit);
         }
 
-        try!(w.seek(SeekFrom::Start(pos1)));
-        try!(w.write_u16::<LE>((count / 2) as u16));
-        try!(w.seek(SeekFrom::Start(pos2)));
+        w.seek(SeekFrom::Start(pos1))?;
+        w.write_u16::<LE>((count / 2) as u16)?;
+        w.seek(SeekFrom::Start(pos2))?;
     }
 
     // Length guaranteed to be even.
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos1 = w.seek(SeekFrom::Current(0))?;
     assert!((pos1 - pos0) % 2 == 0);
 
     // Fill in line count.
-    try!(w.seek(SeekFrom::Start(pos0)));
-    try!(w.write_u16::<LE>(line_count));
-    try!(w.seek(SeekFrom::Start(pos1)));
+    w.seek(SeekFrom::Start(pos0))?;
+    w.write_u16::<LE>(line_count)?;
+    w.seek(SeekFrom::Start(pos1))?;
 
     Ok((pos1 - pos0) as usize)
 }
@@ -342,14 +342,14 @@ fn write_packet<W: Write>(
         SS2Op::Skip(mut len) => {
             let max = ::std::u8::MAX as usize;
             while len > max {
-                try!(w.write_u8(max as u8));
-                try!(w.write_i8(0)); // copy 0
+                w.write_u8(max as u8)?;
+                w.write_i8(0)?; // copy 0
 
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_u8(len as u8));
+            w.write_u8(len as u8)?;
             count = count + 1;
         },
         SS2Op::Memset(idx, mut len) => {
@@ -357,18 +357,18 @@ fn write_packet<W: Write>(
             len = len / 2;
             let max = (-(::std::i8::MIN as i32)) as usize;
             while len > max {
-                try!(w.write_i8(max as i8));
-                try!(w.write_u8(buf[idx + 0]));
-                try!(w.write_u8(buf[idx + 1]));
-                try!(w.write_u8(0)); // skip 0
+                w.write_i8(max as i8)?;
+                w.write_u8(buf[idx + 0])?;
+                w.write_u8(buf[idx + 1])?;
+                w.write_u8(0)?; // skip 0
 
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_i8(-(len as i32) as i8));
-            try!(w.write_u8(buf[idx + 0]));
-            try!(w.write_u8(buf[idx + 1]));
+            w.write_i8(-(len as i32) as i8)?;
+            w.write_u8(buf[idx + 0])?;
+            w.write_u8(buf[idx + 1])?;
             count = count + 1;
         },
         SS2Op::Memcpy(mut idx, mut len) => {
@@ -376,17 +376,17 @@ fn write_packet<W: Write>(
             len = len / 2;
             let max = ::std::i8::MAX as usize;
             while len > max {
-                try!(w.write_i8(max as i8));
-                try!(w.write_all(&buf[idx..(idx + 2 * max)]));
-                try!(w.write_u8(0)); // skip 0
+                w.write_i8(max as i8)?;
+                w.write_all(&buf[idx..(idx + 2 * max)])?;
+                w.write_u8(0)?; // skip 0
 
                 idx = idx + max * 2;
                 len = len - max;
                 count = count + 2;
             }
 
-            try!(w.write_u8(len as u8));
-            try!(w.write_all(&buf[idx..(idx + 2 * len)]));
+            w.write_u8(len as u8)?;
+            w.write_all(&buf[idx..(idx + 2 * len)])?;
             count = count + 1;
         },
         SS2Op::SetEnd(_) => unreachable!(),

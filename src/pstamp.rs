@@ -63,12 +63,12 @@ impl<'a> PostageStamp<'a> {
             // FLI_SBSRSC => (),
             FLI_COLOR256 =>
                 if !self.have_xlat256 {
-                    try!(decode_fli_color256(&buf, &mut self.dst));
+                    decode_fli_color256(&buf, &mut self.dst)?;
                     self.have_palette = true;
                 },
             FLI_COLOR64 =>
                 if !self.have_xlat256 {
-                    try!(decode_fli_color64(&buf, &mut self.dst));
+                    decode_fli_color64(&buf, &mut self.dst)?;
                     self.have_palette = true;
                 },
             // FLI_LC => (),
@@ -83,11 +83,11 @@ impl<'a> PostageStamp<'a> {
                     self.have_palette = true;
                 },
             FLI_BRUN => {
-                try!(decode_fps_brun(&buf, self.flic_w, self.flic_h, &mut self.dst));
+                decode_fps_brun(&buf, self.flic_w, self.flic_h, &mut self.dst)?;
                 self.have_image = true;
             },
             FLI_COPY => {
-                try!(decode_fps_copy(&buf, self.flic_w, self.flic_h, &mut self.dst));
+                decode_fps_copy(&buf, self.flic_w, self.flic_h, &mut self.dst)?;
                 self.have_image = true;
             },
             FLI_PSTAMP =>
@@ -163,12 +163,12 @@ fn decode_fli_pstamp(
         src: &[u8], dst: &mut RasterMut, xlat256: &mut [u8; 256])
         -> FlicResult<bool> {
     let mut r = Cursor::new(src);
-    let height = try!(r.read_u16::<LE>()) as usize;
-    let width = try!(r.read_u16::<LE>()) as usize;
-    let _xlate = try!(r.read_u16::<LE>());
+    let height = r.read_u16::<LE>()? as usize;
+    let width = r.read_u16::<LE>()? as usize;
+    let _xlate = r.read_u16::<LE>()?;
 
-    let size = try!(r.read_u32::<LE>()) as usize;
-    let magic = try!(r.read_u16::<LE>());
+    let size = r.read_u32::<LE>()? as usize;
+    let magic = r.read_u16::<LE>()?;
     if size < 6 {
         return Err(FlicError::Corrupted);
     }
@@ -182,14 +182,14 @@ fn decode_fli_pstamp(
     match magic {
         FPS_BRUN =>
             if width > 0 && height > 0 {
-                try!(decode_fps_brun(&src[start..end], width, height, dst));
+                decode_fps_brun(&src[start..end], width, height, dst)?;
                 return Ok(true);
             } else {
                 return Err(FlicError::WrongResolution);
             },
         FPS_COPY =>
             if width > 0 && height > 0 {
-                try!(decode_fps_copy(&src[start..end], width, height, dst));
+                decode_fps_copy(&src[start..end], width, height, dst)?;
                 return Ok(true);
             } else {
                 return Err(FlicError::WrongResolution);
@@ -230,9 +230,9 @@ pub fn write_pstamp_data<W: Write + Seek>(
     let mut chunk_magic = FPS_COPY;
 
     // Reserve space for chunk.
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
-    try!(w.write_all(&[0; SIZE_OF_FULL_CHUNK]));
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
+    w.write_all(&[0; SIZE_OF_FULL_CHUNK])?;
+    let pos1 = w.seek(SeekFrom::Current(0))?;
 
     let mut xlat256 = [0; 256];
     make_pstamp_xlat256(&next.pal, &mut xlat256);
@@ -242,7 +242,7 @@ pub fn write_pstamp_data<W: Write + Seek>(
         chunk_size = 256;
         chunk_magic = FPS_XLAT256;
 
-        try!(w.write_all(&xlat256[..]));
+        w.write_all(&xlat256[..])?;
     }
 
     // FPS_BRUN/FPS_COPY.
@@ -264,28 +264,28 @@ pub fn write_pstamp_data<W: Write + Seek>(
         }
 
         if chunk_magic == FPS_COPY {
-            try!(w.seek(SeekFrom::Start(pos1)));
-            chunk_size = try!(encode_fli_copy(&pstamp, w));
+            w.seek(SeekFrom::Start(pos1))?;
+            chunk_size = encode_fli_copy(&pstamp, w)?;
             chunk_magic = FPS_COPY;
         }
     }
 
-    let pos2 = try!(w.seek(SeekFrom::Current(0)));
+    let pos2 = w.seek(SeekFrom::Current(0))?;
     assert_eq!(SIZE_OF_FULL_CHUNK + chunk_size, (pos2 - pos0) as usize);
 
-    try!(w.seek(SeekFrom::Start(pos0)));
+    w.seek(SeekFrom::Start(pos0))?;
     if pos2 - pos0 > ::std::u32::MAX as u64 {
         return Err(FlicError::ExceededLimit);
     }
 
-    try!(w.write_u32::<LE>((SIZE_OF_FULL_CHUNK + chunk_size) as u32));
-    try!(w.write_u16::<LE>(FLI_PSTAMP));
-    try!(w.write_u16::<LE>(pstamp_h));
-    try!(w.write_u16::<LE>(pstamp_w));
-    try!(w.write_u16::<LE>(PSTAMP_SIXCUBE));
-    try!(w.write_u32::<LE>((SIZE_OF_SUB_CHUNK + chunk_size) as u32));
-    try!(w.write_u16::<LE>(chunk_magic));
-    try!(w.seek(SeekFrom::Start(pos2)));
+    w.write_u32::<LE>((SIZE_OF_FULL_CHUNK + chunk_size) as u32)?;
+    w.write_u16::<LE>(FLI_PSTAMP)?;
+    w.write_u16::<LE>(pstamp_h)?;
+    w.write_u16::<LE>(pstamp_w)?;
+    w.write_u16::<LE>(PSTAMP_SIXCUBE)?;
+    w.write_u32::<LE>((SIZE_OF_SUB_CHUNK + chunk_size) as u32)?;
+    w.write_u16::<LE>(chunk_magic)?;
+    w.seek(SeekFrom::Start(pos2))?;
 
     Ok((pos2 - pos0) as usize)
 }

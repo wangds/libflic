@@ -20,10 +20,10 @@ pub fn decode_fli_color64(src: &[u8], dst: &mut RasterMut)
     let mut r = Cursor::new(src);
     let mut idx0 = 0;
 
-    let count = try!(r.read_u16::<LE>());
+    let count = r.read_u16::<LE>()?;
     for _ in 0..count {
-        let nskip = try!(r.read_u8()) as usize;
-        let ncopy = match try!(r.read_u8()) {
+        let nskip = r.read_u8()? as usize;
+        let ncopy = match r.read_u8()? {
             0 => 256 as usize,
             n => n as usize,
         };
@@ -34,7 +34,7 @@ pub fn decode_fli_color64(src: &[u8], dst: &mut RasterMut)
             return Err(FlicError::Corrupted);
         }
 
-        try!(r.read_exact(&mut dst.pal[start..end]));
+        r.read_exact(&mut dst.pal[start..end])?;
         for i in start..end {
             if dst.pal[i] > ::std::u8::MAX / 4 {
                 return Err(FlicError::Corrupted);
@@ -66,20 +66,20 @@ fn encode_fli_color64_full<W: Write + Seek>(
         return Err(FlicError::BadInput);
     }
 
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
 
     let count = 1;
     let nskip = 0;
     let ncopy = (next.pal.len() / 3) as u8;
-    try!(w.write_u16::<LE>(count));
-    try!(w.write_u8(nskip));
-    try!(w.write_u8(ncopy));
+    w.write_u16::<LE>(count)?;
+    w.write_u8(nskip)?;
+    w.write_u8(ncopy)?;
 
     for i in 0..next.pal.len() {
-        try!(w.write_u8(next.pal[i] / 4));
+        w.write_u8(next.pal[i] / 4)?;
     }
 
-    let pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let pos1 = w.seek(SeekFrom::Current(0))?;
     Ok((pos1 - pos0) as usize)
 }
 
@@ -93,8 +93,8 @@ fn encode_fli_color64_delta<W: Write + Seek>(
     }
 
     // Reserve space for count.
-    let pos0 = try!(w.seek(SeekFrom::Current(0)));
-    try!(w.write_u16::<LE>(0));
+    let pos0 = w.seek(SeekFrom::Current(0))?;
+    w.write_u16::<LE>(0)?;
 
     let mut count = 0;
 
@@ -104,16 +104,16 @@ fn encode_fli_color64_delta<W: Write + Seek>(
         match g {
             Group::Same(_, nskip) => {
                 assert!(nskip <= ::std::u8::MAX as usize);
-                try!(w.write_u8(nskip as u8));
+                w.write_u8(nskip as u8)?;
             },
             Group::Diff(idx, ncopy) => {
                 let start = 3 * idx;
                 let end = start + 3 * ncopy;
                 assert!(ncopy <= ::std::u8::MAX as usize + 1);
-                try!(w.write_u8(ncopy as u8));
+                w.write_u8(ncopy as u8)?;
 
                 for i in start..end {
-                    try!(w.write_u8(next.pal[i] / 4));
+                    w.write_u8(next.pal[i] / 4)?;
                 }
             },
         }
@@ -122,18 +122,18 @@ fn encode_fli_color64_delta<W: Write + Seek>(
     }
 
     // If odd number, pad it to be even.
-    let mut pos1 = try!(w.seek(SeekFrom::Current(0)));
+    let mut pos1 = w.seek(SeekFrom::Current(0))?;
     if (pos1 - pos0) % 2 == 1 {
-        try!(w.write_u8(0));
+        w.write_u8(0)?;
         pos1 = pos1 + 1;
     }
 
-    try!(w.seek(SeekFrom::Start(pos0)));
+    w.seek(SeekFrom::Start(pos0))?;
     if count > 0 {
         assert!(count % 2 == 0);
         assert!(count / 2 <= ::std::u16::MAX as u32);
-        try!(w.write_u16::<LE>((count / 2) as u16));
-        try!(w.seek(SeekFrom::Start(pos1)));
+        w.write_u16::<LE>((count / 2) as u16)?;
+        w.seek(SeekFrom::Start(pos1))?;
 
         Ok((pos1 - pos0) as usize)
     } else {
