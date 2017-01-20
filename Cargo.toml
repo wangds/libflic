@@ -1,6 +1,6 @@
 [package]
 name = "flic"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["David Wang <millimillenary@gmail.com>"]
 homepage = "https://github.com/wangds/libflic.git"
 repository = "https://github.com/wangds/libflic.git"
@@ -17,9 +17,9 @@ doctest = true
 doc = true
 
 [dependencies]
-byteorder = "0.5"
+byteorder = "1.0"
 libc = "0.2"
 quick-error = "1.1"
 
 [dev-dependencies]
-sdl2 = "0.27"
+sdl2 = "0.28"
