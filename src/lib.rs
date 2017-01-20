@@ -4,6 +4,9 @@
 extern crate byteorder;
 extern crate libc;
 
+#[macro_use]
+extern crate quick_error;
+
 pub use errcode::FlicError;
 pub use errcode::FlicResult;
 pub use flic::FlicFile;
