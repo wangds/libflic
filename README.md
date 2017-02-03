@@ -33,11 +33,14 @@ git clone https://github.com/wangds/libflic.git
 ```
 
 Then build the library and run the example programs using Cargo.
-e.g. to run play a FLIC file, run:
 
 ```sh
 cargo build --example quickfli
+```
 
+To play a FLIC file, run:
+
+```sh
 cargo run --example quickfli <example.flc>
 ```
 
@@ -45,7 +48,7 @@ cargo run --example quickfli <example.flc>
 Basic Usage
 -----------
 
-Add LibFLIC as a dependency to Cargo.toml:
+Add LibFLIC as a dependency to your project's Cargo.toml:
 
 ```toml
 [dependencies]
@@ -60,8 +63,9 @@ extern crate flic;
 use flic::{FlicFile,RasterMut};
 ```
 
-Open a FLIC file from disk.  This will read the FLIC metadata, such as
-animation dimensions and speed.  FlicFile will keep the file open.
+The `FlicFile` type refers to FLIC files streamed from disk.  When
+opening a FLIC file, it will first read the FLIC metadata such as the
+animation's dimensions and speed.  `FlicFile` will keep the file open.
 
 ```rust
 let flic = FlicFile::open(Path::new("example.flc"))?;

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::mem;
 use std::ptr;
 use std::slice;
-use libc::{c_char,c_uint,size_t};
+use libc::{c_char,c_uchar,c_uint,size_t};
 
 use ::{FlicFile,FlicResult,Raster,RasterMut};
 use codec::*;
@@ -19,13 +19,13 @@ pub struct CRasterMut;
 
 // Print with "file:line - " prefix, for more informative error messages.
 macro_rules! printerrorln {
-    ($e:expr) => {
+    ($e:expr) => {{
         println!("{}:{} - {}", file!(), line!(), $e);
-    };
-    ($fmt:expr, $arg:tt) => {
+    }};
+    ($fmt:expr, $arg:tt) => {{
         print!("{}:{} - ", file!(), line!());
         println!($fmt, $arg);
-    };
+    }};
 }
 
 unsafe fn transmute_raster<'a>(src: *const CRaster)
@@ -42,7 +42,7 @@ unsafe fn transmute_raster_mut<'a>(dst: *mut CRasterMut)
 
 fn run_decoder<F>(file: &'static str, line: u32,
         decoder: F,
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint
         where F: FnOnce(&[u8], &mut RasterMut) -> FlicResult<()> {
     let src_slice = unsafe{ slice::from_raw_parts(src, src_len) };
@@ -58,7 +58,7 @@ fn run_decoder<F>(file: &'static str, line: u32,
 
 fn run_encoder<F>(file: &'static str, line: u32,
         encoder: F,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint
         where F: FnOnce(&mut Cursor<Vec<u8>>) -> FlicResult<usize> {
     let mut buf: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -89,7 +89,7 @@ fn run_encoder<F>(file: &'static str, line: u32,
 /// Decode a FLI_WRUN chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_wrun(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -97,14 +97,14 @@ pub extern "C" fn flicrs_decode_fli_wrun(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_wrun(src, dst),
+            decode_fli_wrun,
             src, src_len, dst)
 }
 
 /// Decode a FLI_COLOR256 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_color256(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -112,14 +112,14 @@ pub extern "C" fn flicrs_decode_fli_color256(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_color256(src, dst),
+            decode_fli_color256,
             src, src_len, dst)
 }
 
 /// Decode a FLI_SS2 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_ss2(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -127,14 +127,14 @@ pub extern "C" fn flicrs_decode_fli_ss2(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_ss2(src, dst),
+            decode_fli_ss2,
             src, src_len, dst)
 }
 
 /// Decode a FLI_SBSRSC chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_sbsrsc(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -142,14 +142,14 @@ pub extern "C" fn flicrs_decode_fli_sbsrsc(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_sbsrsc(src, dst),
+            decode_fli_sbsrsc,
             src, src_len, dst)
 }
 
 /// Decode a FLI_COLOR64 chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_color64(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -157,14 +157,14 @@ pub extern "C" fn flicrs_decode_fli_color64(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_color64(src, dst),
+            decode_fli_color64,
             src, src_len, dst)
 }
 
 /// Decode a FLI_LC chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_lc(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -172,7 +172,7 @@ pub extern "C" fn flicrs_decode_fli_lc(
     }
 
     run_decoder(file!(), line!(),
-            |src, dst| decode_fli_lc(src, dst),
+            decode_fli_lc,
             src, src_len, dst)
 }
 
@@ -209,7 +209,7 @@ pub extern "C" fn flicrs_decode_fli_icolors(
 /// Decode a FLI_BRUN chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_brun(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -224,7 +224,7 @@ pub extern "C" fn flicrs_decode_fli_brun(
 /// Decode a FLI_COPY chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fli_copy(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -239,7 +239,7 @@ pub extern "C" fn flicrs_decode_fli_copy(
 /// Decode a FPS_BRUN chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fps_brun(
-        src: *const u8, src_len: size_t, src_w: size_t, src_h: size_t,
+        src: *const c_uchar, src_len: size_t, src_w: size_t, src_h: size_t,
         dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || src_w <= 0 || src_h <= 0 || dst.is_null() {
@@ -255,7 +255,7 @@ pub extern "C" fn flicrs_decode_fps_brun(
 /// Decode a FPS_COPY chunk.
 #[no_mangle]
 pub extern "C" fn flicrs_decode_fps_copy(
-        src: *const u8, src_len: size_t, src_w: size_t, src_h: size_t,
+        src: *const c_uchar, src_len: size_t, src_w: size_t, src_h: size_t,
         dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || src_w <= 0 || src_h <= 0 || dst.is_null() {
@@ -287,7 +287,8 @@ pub extern "C" fn flicrs_make_pstamp_pal(
 /// stamp's six-cube palette.
 #[no_mangle]
 pub extern "C" fn flicrs_make_pstamp_xlat256(
-        src: *const u8, src_len: size_t, dst: *mut u8, dst_len: size_t)
+        src: *const c_uchar, src_len: size_t,
+        dst: *mut c_uchar, dst_len: size_t)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -303,7 +304,7 @@ pub extern "C" fn flicrs_make_pstamp_xlat256(
 /// Apply the translation table to the pixels in the raster.
 #[no_mangle]
 pub extern "C" fn flicrs_apply_pstamp_xlat256(
-        src: *const u8, src_len: size_t, dst: *mut CRasterMut)
+        src: *const c_uchar, src_len: size_t, dst: *mut CRasterMut)
         -> c_uint {
     if src.is_null() || dst.is_null() {
         printerrorln!("bad input parameters");
@@ -320,7 +321,7 @@ pub extern "C" fn flicrs_apply_pstamp_xlat256(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_color256(
         opt_prev: *const CRaster, next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -342,7 +343,7 @@ pub extern "C" fn flicrs_encode_fli_color256(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_ss2(
         prev: *const CRaster, next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if prev.is_null() || next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -360,7 +361,7 @@ pub extern "C" fn flicrs_encode_fli_ss2(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_color64(
         opt_prev: *const CRaster, next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -382,7 +383,7 @@ pub extern "C" fn flicrs_encode_fli_color64(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_lc(
         prev: *const CRaster, next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if prev.is_null() || next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -400,7 +401,7 @@ pub extern "C" fn flicrs_encode_fli_lc(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_brun(
         next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -417,7 +418,7 @@ pub extern "C" fn flicrs_encode_fli_brun(
 #[no_mangle]
 pub extern "C" fn flicrs_encode_fli_copy(
         next: *const CRaster,
-        out_buf: *mut u8, max_len: size_t, out_len: *mut size_t)
+        out_buf: *mut c_uchar, max_len: size_t, out_len: *mut size_t)
         -> c_uint {
     if next.is_null() || out_buf.is_null() || out_len.is_null() {
         printerrorln!("bad input parameters");
@@ -661,8 +662,8 @@ pub extern "C" fn flicrs_read_next_frame(
 #[no_mangle]
 pub extern "C" fn flicrs_raster_alloc(
         x: size_t, y: size_t, w: size_t, h: size_t, stride: size_t,
-        buf: *const u8, buf_len: size_t,
-        pal: *const u8, pal_len: size_t)
+        buf: *const c_uchar, buf_len: size_t,
+        pal: *const c_uchar, pal_len: size_t)
         -> *mut CRaster {
     if buf.is_null() || pal.is_null() {
         printerrorln!("bad input parameters");
@@ -681,8 +682,8 @@ pub extern "C" fn flicrs_raster_alloc(
 #[no_mangle]
 pub extern "C" fn flicrs_raster_mut_alloc(
         x: size_t, y: size_t, w: size_t, h: size_t, stride: size_t,
-        buf: *mut u8, buf_len: size_t,
-        pal: *mut u8, pal_len: size_t)
+        buf: *mut c_uchar, buf_len: size_t,
+        pal: *mut c_uchar, pal_len: size_t)
         -> *mut CRasterMut {
     if buf.is_null() || pal.is_null() {
         printerrorln!("bad input parameters");

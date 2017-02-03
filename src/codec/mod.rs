@@ -4,7 +4,7 @@ macro_rules! module {
     ($e:ident) => {
         pub use self::$e::*;
         mod $e;
-    };
+    }
 }
 
 use std::iter::Zip;
