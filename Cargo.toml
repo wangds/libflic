@@ -1,6 +1,6 @@
 [package]
 name = "flic"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["David Wang <millimillenary@gmail.com>"]
 homepage = "https://github.com/wangds/libflic.git"
 repository = "https://github.com/wangds/libflic.git"
