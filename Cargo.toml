@@ -8,6 +8,8 @@ documentation = "https://docs.rs/flic/"
 description = "Autodesk Animator FLI and Autodesk Animator Pro FLC file encoder and decoder."
 license = "MIT"
 readme = "README.md"
+keywords = ["decoder", "encoder"]
+categories = ["multimedia::video"]
 
 [lib]
 name = "flic"
@@ -23,3 +25,6 @@ quick-error = "1.1"
 
 [dev-dependencies]
 sdl2 = "0.28"
+
+[badges]
+travis-ci = { repository = "wangds/libflic" }
