@@ -47,13 +47,7 @@ impl<'a> Raster<'a> {
         assert!(pal.len() == 3 * 256);
 
         Raster {
-            x: x,
-            y: y,
-            w: w,
-            h: h,
-            stride: stride,
-            buf: buf,
-            pal: pal,
+            x, y, w, h, stride, buf, pal,
         }
     }
 }
@@ -103,13 +97,7 @@ impl<'a> RasterMut<'a> {
         assert!(pal.len() == 3 * 256);
 
         RasterMut {
-            x: x,
-            y: y,
-            w: w,
-            h: h,
-            stride: stride,
-            buf: buf,
-            pal: pal,
+            x, y, w, h, stride, buf, pal,
         }
     }
 }
