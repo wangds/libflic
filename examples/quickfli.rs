@@ -37,9 +37,10 @@ fn main() {
         .build().unwrap();
 
     let _ = window.set_minimum_size(MIN_SCREEN_W, MIN_SCREEN_H);
-    let mut renderer = window.renderer().build().unwrap();
+    let mut canvas = window.into_canvas().build().unwrap();
     let mut timer = sdl.timer().unwrap();
     let mut event_pump = sdl.event_pump().unwrap();
+    let texture_creator = canvas.texture_creator();
 
     let mut flic_w = 0;
     let mut flic_h = 0;
@@ -65,15 +66,15 @@ fn main() {
                         &mut RasterMut::new(flic_w, flic_h, &mut buf, &mut pal)) {
                     Ok(_) => {
                         render_to_texture(texture, flic_w, flic_h, &buf, &pal);
-                        present_to_screen(&mut renderer, texture);
+                        present_to_screen(&mut canvas, texture);
                     },
                     Err(e) => {
                         println!("Error occurred - {}", e);
                     },
                 }
             } else {
-                renderer.clear();
-                renderer.present();
+                canvas.clear();
+                canvas.present();
             }
 
             last_tstart = tstart;
@@ -112,7 +113,7 @@ fn main() {
                             flic_w = f.width() as usize;
                             flic_h = f.height() as usize;
 
-                            texture = renderer.create_texture_streaming(
+                            texture = texture_creator.create_texture_streaming(
                                         PixelFormatEnum::RGB24,
                                         flic_w as u32, flic_h as u32).ok();
                             buf = vec![0; flic_w * flic_h];
@@ -158,9 +159,9 @@ fn render_to_texture(
 }
 
 fn present_to_screen(
-        renderer: &mut sdl2::render::Renderer,
+        canvas: &mut sdl2::render::WindowCanvas,
         texture: &sdl2::render::Texture) {
-    renderer.clear();
-    let _ = renderer.copy(&texture, None, None);
-    renderer.present();
+    canvas.clear();
+    let _ = canvas.copy(&texture, None, None);
+    canvas.present();
 }

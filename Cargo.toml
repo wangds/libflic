@@ -24,7 +24,7 @@ libc = "0.2"
 quick-error = "1.2"
 
 [dev-dependencies]
-sdl2 = "0.29"
+sdl2 = "0.30"
 
 [badges]
 travis-ci = { repository = "wangds/libflic" }

@@ -42,9 +42,10 @@ fn main() {
         .build().unwrap();
 
     let _ = window.set_minimum_size(MIN_SCREEN_W, MIN_SCREEN_H);
-    let mut renderer = window.renderer().build().unwrap();
+    let mut canvas = window.into_canvas().build().unwrap();
     let mut event_pump = sdl.event_pump().unwrap();
-    let mut texture = renderer.create_texture_streaming(
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator.create_texture_streaming(
             PixelFormatEnum::RGB24, SCREEN_W, SCREEN_H).unwrap();
 
     if let Ok(entries) = dir.read_dir() {
@@ -123,7 +124,7 @@ fn main() {
                 SCREEN_W as usize, SCREEN_H as usize, &buf, &pal);
     }
 
-    present_to_screen(&mut renderer, &texture);
+    present_to_screen(&mut canvas, &texture);
 
     'mainloop: loop {
         if let Some(e) = event_pump.wait_event_timeout(100) {
@@ -136,7 +137,7 @@ fn main() {
                 _ => (),
             }
         } else {
-            present_to_screen(&mut renderer, &texture);
+            present_to_screen(&mut canvas, &texture);
         }
     }
 }
@@ -189,9 +190,9 @@ fn render_to_texture(
 }
 
 fn present_to_screen(
-        renderer: &mut sdl2::render::Renderer,
+        canvas: &mut sdl2::render::WindowCanvas,
         texture: &sdl2::render::Texture) {
-    renderer.clear();
-    let _ = renderer.copy(&texture, None, None);
-    renderer.present();
+    canvas.clear();
+    let _ = canvas.copy(&texture, None, None);
+    canvas.present();
 }
